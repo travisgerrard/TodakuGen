@@ -17,6 +17,21 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Add these test routes BEFORE your other route declarations
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API test endpoint working' });
+});
+
+app.post('/api/auth/test', (req, res) => {
+  res.json({ message: 'Auth test endpoint working', body: req.body });
+});
+
+// Add request logging
+app.use((req, res, next) => {
+  console.log(`[SERVER] ${req.method} ${req.url}`);
+  next();
+});
+
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users/me', require('./routes/authRoutes'));

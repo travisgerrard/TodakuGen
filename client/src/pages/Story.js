@@ -18,16 +18,19 @@ const Story = () => {
   useEffect(() => {
     const fetchStory = async () => {
       try {
-        setLoading(true);
-        const response = await api.get(`/stories/${id}`);
-        setStory(response.data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching story:', err);
-        setError('Failed to load the story. Please try again.');
-      } finally {
-        setLoading(false);
-      }
+  setLoading(true);
+  console.log("Fetching story with ID:", id);
+  const response = await api.get(`/stories/${id}`);
+  console.log("API Response:", response.data);
+  setStory(response.data);
+  setError(null);
+} catch (err) {
+  console.error('Error fetching story:', err);
+  console.error('Error response:', err.response?.data);
+  setError('Failed to load the story. Please try again.');
+} finally {
+  setLoading(false);
+}
     };
     
     fetchStory();

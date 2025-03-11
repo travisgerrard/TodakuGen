@@ -8,7 +8,7 @@ const fs = require('fs');
 
 // Initialize OpenAI
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY 
 });
 
 // Fallback stories for when OpenAI API fails

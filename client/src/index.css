@@ -21,7 +21,14 @@
   --story-background: #ffffff;
   --story-text-color: #333333;
   
-  /* Semantic Colors */
+  /* Form and Input Colors */
+  --input-background: #ffffff;
+  --input-text: #333333;
+  --input-border: #ced4da;
+  --input-focus-border: #4361ee;
+  --placeholder-color: #6c757d;
+  
+  /* Status and Alert Colors */
   --success-color: #4cc9a3;
   --error-color: #e63946;
   --warning-color: #ffc107;
@@ -30,6 +37,7 @@
   /* Japanese Text Colors */
   --kanji-color: #4361ee;
   --grammar-color: #3a0ca3;
+  --furigana-color: #6c757d;
   
   /* UI Elements */
   --border-radius-sm: 4px;
@@ -66,11 +74,18 @@
   --text-color: #e0e0e0;
   --light-gray: #333333;
   --medium-gray: #555555;
-  --dark-gray: #888888;
+  --dark-gray: #a0a0a0; /* Lightened for better contrast */
   
   /* Content Backgrounds - Adjusted for Dark Mode */
   --story-background: #2a2a2a; /* Lighter than card background */
   --story-text-color: #f0f0f0; /* Brighter text for better contrast */
+  
+  /* Form and Input Colors - Adjusted for Dark Mode */
+  --input-background: #2a2a2a;
+  --input-text: #e0e0e0;
+  --input-border: #555555;
+  --input-focus-border: #7490f0;
+  --placeholder-color: #a0a0a0;
   
   /* Semantic Colors - Adjusted for Dark Mode */
   --success-color: #5dd6b2;
@@ -81,6 +96,7 @@
   /* Japanese Text Colors - Adjusted for Dark Mode */
   --kanji-color: #7490f0;
   --grammar-color: #9271f0;
+  --furigana-color: #b0b0b0;
   
   /* UI Elements - Adjusted for Dark Mode */
   --box-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -154,7 +170,7 @@ body {
 }
 
 .reading {
-  color: var(--dark-gray);
+  color: var(--furigana-color);
   font-size: 0.9em;
   font-weight: 400;
 }
@@ -166,7 +182,7 @@ body {
 }
 
 [data-theme="dark"] .reading {
-  color: #b0b0b0; /* Lighter gray for better visibility in dark mode */
+  color: var(--furigana-color); /* Lighter gray for better visibility in dark mode */
 }
 
 /* Japanese text with furigana in stories */
@@ -181,11 +197,11 @@ body {
   font-size: 0.7em;
   line-height: 1;
   text-align: center;
-  color: var(--dark-gray);
+  color: var(--furigana-color);
 }
 
 [data-theme="dark"] .furigana {
-  color: #b0b0b0; /* Better contrast in dark mode */
+  color: var(--furigana-color); /* Better contrast in dark mode */
 }
 
 .base-text {
@@ -496,18 +512,23 @@ p {
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-color);
-  background-color: var(--card-background);
+  color: var(--input-text);
+  background-color: var(--input-background);
   background-clip: padding-box;
-  border: 1px solid var(--medium-gray);
+  border: 1px solid var(--input-border);
   border-radius: var(--border-radius);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .form-control:focus {
-  border-color: var(--primary-color);
+  border-color: var(--input-focus-border);
   outline: 0;
   box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25);
+}
+
+.form-control::placeholder {
+  color: var(--placeholder-color);
+  opacity: 1;
 }
 
 select.form-control {
@@ -516,6 +537,10 @@ select.form-control {
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 16px 12px;
+}
+
+[data-theme="dark"] select.form-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23a0a0a0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* App Container Wrapper */
@@ -790,9 +815,14 @@ footer {
   border-bottom-color: var(--medium-gray);
 }
 
+[data-theme="dark"] .review-tabs button {
+  color: var(--dark-gray);
+}
+
 [data-theme="dark"] .review-tabs button.active {
   background-color: var(--card-background);
   border-bottom-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 /* Vocabulary and Grammar Items */
@@ -885,6 +915,25 @@ footer {
   background-color: rgba(72, 149, 239, 0.1);
   border: 1px solid rgba(72, 149, 239, 0.3);
   color: var(--info-color);
+}
+
+/* Ensure messages have good contrast in dark mode */
+[data-theme="dark"] .error-message {
+  background-color: rgba(255, 90, 101, 0.15);
+  border-color: rgba(255, 90, 101, 0.4);
+  color: #ff7a82; /* Brighter red for dark mode */
+}
+
+[data-theme="dark"] .success-message {
+  background-color: rgba(93, 214, 178, 0.15);
+  border-color: rgba(93, 214, 178, 0.4);
+  color: #67e0bd; /* Brighter green for dark mode */
+}
+
+[data-theme="dark"] .info-message {
+  background-color: rgba(100, 167, 240, 0.15);
+  border-color: rgba(100, 167, 240, 0.4);
+  color: #7fb4f5; /* Brighter blue for dark mode */
 }
 
 /* Loading States */
@@ -1046,4 +1095,214 @@ footer {
   100% {
     box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
   }
+}
+
+/* Mobile menu footer */
+.mobile-menu-footer {
+  padding: 20px;
+  border-top: 1px solid var(--light-gray);
+  font-size: 0.8rem;
+  color: var(--dark-gray);
+  text-align: center;
+}
+
+/* Ensure text for muted sections is visible in dark mode */
+[data-theme="dark"] .text-muted {
+  color: var(--dark-gray);
+}
+
+[data-theme="dark"] .mobile-menu-footer {
+  color: var(--dark-gray);
+  border-top-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .mobile-user-greeting {
+  color: var(--dark-gray);
+}
+
+/* Button Styling for Dark Mode */
+[data-theme="dark"] .btn-outline-primary {
+  border-color: var(--primary-light);
+  color: var(--primary-light);
+}
+
+[data-theme="dark"] .btn-outline-primary:hover {
+  background-color: var(--primary-light);
+  color: #121212;
+}
+
+[data-theme="dark"] .btn-primary {
+  background-color: var(--primary-light);
+  color: #121212;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .btn-primary:hover {
+  background-color: var(--primary-dark);
+}
+
+[data-theme="dark"] .btn-secondary {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+[data-theme="dark"] .btn-logout {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .btn-logout:hover {
+  color: var(--error-color);
+}
+
+/* Ensure checkboxes and radio buttons are visible in dark mode */
+[data-theme="dark"] input[type="checkbox"],
+[data-theme="dark"] input[type="radio"] {
+  accent-color: var(--primary-light);
+}
+
+/* Form focus states in dark mode */
+[data-theme="dark"] .form-control:focus {
+  box-shadow: 0 0 0 0.25rem rgba(116, 144, 240, 0.25);
+  border-color: var(--primary-light);
+}
+
+/* Disabled form controls in dark mode */
+[data-theme="dark"] .form-control:disabled,
+[data-theme="dark"] .form-control[readonly] {
+  background-color: #333;
+  color: #999;
+}
+
+/* Modals in dark mode */
+[data-theme="dark"] .modal-content {
+  background-color: var(--card-background);
+  color: var(--text-color);
+  border-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+  border-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .close {
+  color: var(--text-color);
+}
+
+/* Tooltips in dark mode */
+[data-theme="dark"] .tooltip {
+  --bs-tooltip-bg: var(--card-background);
+  --bs-tooltip-color: var(--text-color);
+}
+
+/* Dropdowns in dark mode */
+[data-theme="dark"] .dropdown-menu {
+  background-color: var(--card-background);
+  border-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .dropdown-item {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .dropdown-item:hover,
+[data-theme="dark"] .dropdown-item:focus {
+  background-color: rgba(116, 144, 240, 0.1);
+  color: var(--primary-light);
+}
+
+/* Tables in dark mode */
+[data-theme="dark"] .table {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .table thead th {
+  border-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .table td,
+[data-theme="dark"] .table th {
+  border-color: var(--medium-gray);
+}
+
+[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Badges in dark mode */
+[data-theme="dark"] .badge {
+  background-color: var(--medium-gray);
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .badge-primary {
+  background-color: var(--primary-light);
+  color: #121212;
+}
+
+/* Alerts in dark mode */
+[data-theme="dark"] .alert {
+  background-color: var(--card-background);
+  border-color: var(--medium-gray);
+  color: var(--text-color);
+}
+
+/* Links and buttons in story content */
+.story-content a,
+.english-content a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.story-content a:hover,
+.english-content a:hover {
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .story-content a,
+[data-theme="dark"] .english-content a {
+  color: var(--primary-light);
+}
+
+/* Story controls */
+.story-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+}
+
+[data-theme="dark"] .story-controls .btn {
+  background-color: #333;
+  color: var(--text-color);
+  border: 1px solid var(--medium-gray);
+}
+
+[data-theme="dark"] .story-controls .btn:hover {
+  background-color: #444;
+  color: var(--primary-light);
+}
+
+[data-theme="dark"] .story-controls .btn.active {
+  background-color: var(--primary-dark);
+  color: white;
+  border-color: var(--primary-light);
+}
+
+/* Story tags and metadata */
+.story-tag {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--light-gray);
+  color: var(--dark-gray);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.75rem;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+[data-theme="dark"] .story-tag {
+  background-color: #333;
+  color: #b0b0b0;
 }

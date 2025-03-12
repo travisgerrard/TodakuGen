@@ -33,6 +33,9 @@ const registerUser = async (req, res) => {
         userId: user._id,
         username: user.username,
         token: generateToken(user._id),
+        waniKaniLevel: user.waniKaniLevel,
+        genkiChapter: user.genkiChapter,
+        preferences: user.preferences,
       });
     } else {
       res.status(400);
@@ -57,17 +60,25 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       // Create new user if username doesn't exist
+      console.log(`User '${username}' not found, creating new account`);
       user = await User.create({
         username
       });
+    } else {
+      console.log(`User '${username}' found, logging in existing account (ID: ${user._id})`);
     }
 
+    // Return comprehensive user data
     res.json({
       userId: user._id,
       username: user.username,
       token: generateToken(user._id),
+      waniKaniLevel: user.waniKaniLevel,
+      genkiChapter: user.genkiChapter,
+      preferences: user.preferences,
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(400).json({
       message: error.message
     });
@@ -79,21 +90,33 @@ const loginUser = async (req, res) => {
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
+    if (!req.user || !req.user._id) {
+      console.error('getUserProfile called without valid user ID');
+      return res.status(401).json({
+        message: 'Authentication required',
+      });
+    }
+
+    console.log(`Fetching profile for user: ${req.user._id}`);
     const user = await User.findById(req.user._id);
 
     if (user) {
+      // Return comprehensive user data
       res.json({
         _id: user._id,
         username: user.username,
         waniKaniLevel: user.waniKaniLevel,
         genkiChapter: user.genkiChapter,
         preferences: user.preferences,
+        storyCount: user.readStories?.length || 0,
       });
     } else {
+      console.error(`User not found with ID: ${req.user._id}`);
       res.status(404);
       throw new Error('User not found');
     }
   } catch (error) {
+    console.error('getUserProfile error:', error);
     res.status(400).json({
       message: error.message
     });

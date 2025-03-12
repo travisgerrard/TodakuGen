@@ -90,7 +90,7 @@ const StoryReview = () => {
   const markAsDifficult = async (vocabId) => {
     try {
       console.log(`Marking vocabulary ID ${vocabId} as difficult`);
-      await api.post(`/vocab/difficult/${vocabId}`, {}, {
+      await api.post(`/words/mark`, { wordId: vocabId, sleepDays: 7 }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

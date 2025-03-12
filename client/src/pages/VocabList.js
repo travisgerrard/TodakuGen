@@ -201,7 +201,7 @@ const VocabList = () => {
                   {word.notes && (
                     <div className="mb-3">
                       <div className="mb-1 fw-bold">Notes:</div>
-                      <div className="p-2 bg-light rounded">{word.notes}</div>
+                      <div className="p-2 bg-light rounded notes-section">{word.notes}</div>
                     </div>
                   )}
                   {word.examples && word.examples.length > 0 && (

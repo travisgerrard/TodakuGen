@@ -4,7 +4,6 @@ import api from '../utils/api';
 import StoryContext from '../context/StoryContext';
 import { useStory } from '../context/StoryContext';
 import { useAuth } from '../context/AuthContext';
-import { processStoryContent } from '../utils/textProcessing';
 
 const Story = () => {
   const { id } = useParams();
@@ -23,9 +22,6 @@ const Story = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationError, setTranslationError] = useState('');
   
-  // Processed content with furigana
-  const [processedParagraphs, setProcessedParagraphs] = useState([]);
-  
   useEffect(() => {
     const fetchStory = async () => {
       try {
@@ -35,17 +31,13 @@ const Story = () => {
         console.log("API Response:", response.data);
         setStory(response.data);
         
-        // Process the content with furigana
-        if (response.data.content) {
-          const processed = processStoryContent(response.data.content);
-          setProcessedParagraphs(processed);
-        }
-        
         // Set upvote information if available
         if (response.data.hasUpvoted !== undefined) {
+          console.log("Setting hasUpvoted to:", response.data.hasUpvoted);
           setHasUpvoted(response.data.hasUpvoted);
         }
         if (response.data.upvoteCount !== undefined) {
+          console.log("Setting upvoteCount to:", response.data.upvoteCount);
           setUpvoteCount(response.data.upvoteCount);
         }
         
@@ -117,11 +109,15 @@ const Story = () => {
     
     try {
       setIsUpvoting(true);
+      console.log('Calling upvoteStory with ID:', id);
       const result = await upvoteStory(id);
       
       if (result) {
+        console.log('Upvote result:', result);
         setHasUpvoted(result.hasUpvoted);
         setUpvoteCount(result.upvoteCount);
+      } else {
+        console.error('No result from upvote call');
       }
     } catch (error) {
       console.error('Error upvoting story:', error);
@@ -244,12 +240,8 @@ const Story = () => {
         <div className="card shadow-sm">
           <div className="card-body">
             <div className="story-content japanese-text">
-              {processedParagraphs.length > 0 ? (
-                processedParagraphs.map((paragraph, index) => (
-                  <p key={index} dangerouslySetInnerHTML={{ __html: paragraph }}></p>
-                ))
-              ) : content ? (
-                content.split('\n').map((paragraph, index) => (
+              {contentParagraphs.length > 0 ? (
+                contentParagraphs.map((paragraph, index) => (
                   <p key={index}>{paragraph}</p>
                 ))
               ) : (

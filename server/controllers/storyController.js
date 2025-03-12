@@ -89,8 +89,13 @@ const generateStory = async (req, res) => {
       and Genki Chapter ${genkiChapter}. The story should be ${length} 
       (short: 100-200 words, medium: 200-400 words, long: 400-600 words) and about ${topic}. 
       Use simple sentences, limit kanji to WaniKani Level ${waniKaniLevel}, 
-      and grammar to Genki Chapter ${genkiChapter}. 
-      Include a title and avoid complex vocabulary or idioms beyond the learner's level.
+      and grammar to Genki Chapter ${genkiChapter}.
+      
+      IMPORTANT FORMATTING:
+      1. For the first appearance of any kanji word, add furigana in parentheses immediately after the word. Example: 私(わたし)は日本(にほん)に行きました。
+      2. For subsequent appearances of the same kanji word, do NOT include furigana again.
+      3. Include a title as the first line.
+      4. Avoid complex vocabulary or idioms beyond the learner's level.
       
       After writing the Japanese story, please provide an English translation of the entire story, 
       preceded by "[ENGLISH_TRANSLATION]" on a new line to separate it from the Japanese version.
@@ -234,6 +239,15 @@ const getStoryById = async (req, res) => {
       throw new Error('Story not found');
     }
     
+    // Check if the user has upvoted this story
+    let hasUpvoted = false;
+    if (req.user) {
+      const user = await User.findById(req.user._id);
+      if (user && user.upvotedStories) {
+        hasUpvoted = user.upvotedStories.some(id => id.toString() === story._id.toString());
+      }
+    }
+    
     // Format response consistently with generateStory endpoint
     res.json({
       storyId: story._id,
@@ -244,6 +258,10 @@ const getStoryById = async (req, res) => {
       grammarLevel: story.grammarLevel,
       length: story.length,
       topic: story.topic,
+      createdAt: story.createdAt,
+      user: story.user,
+      upvoteCount: story.upvoteCount || 0,
+      hasUpvoted
     });
   } catch (error) {
     res.status(404).json({
@@ -822,7 +840,7 @@ const translateStory = async (req, res) => {
     // Request a translation from OpenAI
     console.log(`Generating English translation using OpenAI API`);
     try {
-      const translationPrompt = `Translate the following Japanese text to natural English:
+      const translationPrompt = `Translate the following Japanese text to natural English. Create a high-quality, accurate translation that captures the meaning while sounding natural in English:
       
 ${story.content}`;
       
@@ -1005,33 +1023,28 @@ const upvoteStory = async (req, res) => {
   }
 };
 
-// @desc    Toggle story visibility (public/private)
-// @route   PUT /api/stories/:id/visibility
+// @desc    Toggle a story's public/private visibility
+// @route   PUT /api/stories/:id/toggle-visibility
 // @access  Private
 const toggleStoryVisibility = async (req, res) => {
   try {
-    const storyId = req.params.id;
-    const userId = req.user._id;
+    const story = await Story.findById(req.params.id);
     
-    console.log(`User ${req.user.username} is toggling visibility for story ${storyId}`);
-    
-    // Find the story
-    const story = await Story.findById(storyId);
     if (!story) {
       return res.status(404).json({ message: 'Story not found' });
     }
     
-    // Make sure the user is the owner of the story
-    if (story.user.toString() !== userId.toString()) {
-      return res.status(403).json({ message: 'You can only change visibility of your own stories' });
+    // Check if the user is the owner of the story
+    if (story.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to modify this story' });
     }
     
-    // Toggle the visibility
-    story.isPublic = !story.isPublic;
+    // Always set to public
+    story.isPublic = true;
     await story.save();
     
-    return res.json({ 
-      message: story.isPublic ? 'Story is now public' : 'Story is now private',
+    return res.json({
+      message: 'Story is now public',
       isPublic: story.isPublic
     });
   } catch (error) {

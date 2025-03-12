@@ -165,12 +165,10 @@ const Stories = () => {
                         <i className="bi bi-check-circle-fill me-2"></i>Completed
                       </span>
                     )}
-                    {story.upvoteCount > 0 && (
-                      <span className="text-primary">
-                        <i className="bi bi-hand-thumbs-up-fill me-2"></i>
-                        {story.upvoteCount} {story.upvoteCount === 1 ? 'upvote' : 'upvotes'}
-                      </span>
-                    )}
+                    <span className="text-primary">
+                      <i className="bi bi-hand-thumbs-up-fill me-2"></i>
+                      {story.upvoteCount || 0} {story.upvoteCount === 1 ? 'upvote' : 'upvotes'}
+                    </span>
                     {story.isPublic && (
                       <span className="text-info">
                         <i className="bi bi-globe me-2"></i>

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoryProvider } from './context/StoryContext';
 import { VocabProvider } from './context/VocabContext';
 import { GrammarProvider } from './context/GrammarContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 // Pages (to be created)
 import Home from './pages/Home';
@@ -18,9 +19,12 @@ import Story from './pages/Story';
 import DifficultWords from './pages/DifficultWords';
 
 // Components (to be created)
+import ThemeToggle from './components/ThemeToggle';
+import MobileNavigation from './components/MobileNavigation';
 
 function AppNavigation() {
   const { isAuthenticated, logout, user } = useAuth();
+  const { theme } = useTheme();
 
   return (
     <header className="header">
@@ -30,25 +34,37 @@ function AppNavigation() {
             <span>TadokuGen</span>
           </Link>
         </div>
-        {isAuthenticated ? (
-          <nav className="nav">
-            <Link to="/" className="nav-link">Home</Link>
-            <Link to="/stories" className="nav-link">Stories</Link>
-            <Link to="/vocabulary" className="nav-link">Vocabulary</Link>
-            <Link to="/grammar" className="nav-link">Grammar</Link>
-            <Link to="/difficult-words" className="nav-link">Difficult Words</Link>
-            <Link to="/profile" className="nav-link">Profile</Link>
-            <span className="ms-2 text-muted">Hi, {user?.username || 'User'}</span>
-            <button onClick={logout} className="btn-logout ms-2">
-              <i className="bi bi-box-arrow-right me-1"></i>
-              Logout
-            </button>
-          </nav>
-        ) : (
-          <nav className="nav">
-            <Link to="/login" className="nav-link">Login</Link>
-          </nav>
-        )}
+        
+        {/* Desktop Navigation - Only shown on desktop */}
+        <div className="desktop-nav">
+          {isAuthenticated ? (
+            <nav className="nav">
+              <Link to="/" className="nav-link">Home</Link>
+              <Link to="/stories" className="nav-link">Stories</Link>
+              <Link to="/vocabulary" className="nav-link">Vocabulary</Link>
+              <Link to="/grammar" className="nav-link">Grammar</Link>
+              <Link to="/difficult-words" className="nav-link">Difficult Words</Link>
+              <Link to="/profile" className="nav-link">Profile</Link>
+              <span className="ms-2 text-muted">Hi, {user?.username || 'User'}</span>
+              <button onClick={logout} className="btn-logout ms-2">
+                <i className="bi bi-box-arrow-right me-1"></i>
+                Logout
+              </button>
+            </nav>
+          ) : (
+            <nav className="nav">
+              <Link to="/login" className="nav-link">Login</Link>
+            </nav>
+          )}
+          
+          {/* Theme Toggle for Desktop */}
+          <div className="desktop-theme-toggle">
+            <ThemeToggle />
+          </div>
+        </div>
+        
+        {/* Mobile Navigation - Only shown on mobile */}
+        <MobileNavigation />
       </div>
     </header>
   );
@@ -68,71 +84,80 @@ function ProtectedRoute({ children }) {
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <StoryProvider>
-          <VocabProvider>
-            <GrammarProvider>
-              <div className="app-wrapper">
-                <AppNavigation />
-                <main className="app-container">
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/" element={
-                      <ProtectedRoute>
-                        <Home />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/profile" element={
-                      <ProtectedRoute>
-                        <Profile />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/stories" element={
-                      <ProtectedRoute>
-                        <Stories />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/story/:id" element={
-                      <ProtectedRoute>
-                        <Story />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/story-review/:id" element={
-                      <ProtectedRoute>
-                        <StoryReview />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/difficult-words" element={
-                      <ProtectedRoute>
-                        <DifficultWords />
-                      </ProtectedRoute>
-                    } />
-                    <Route
-                      path="/vocabulary"
-                      element={
+      <ThemeProvider>
+        <AuthProvider>
+          <StoryProvider>
+            <VocabProvider>
+              <GrammarProvider>
+                <div className="app-wrapper">
+                  <AppNavigation />
+                  <main className="app-container">
+                    <Routes>
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/" element={
                         <ProtectedRoute>
-                          <VocabList />
+                          <Home />
                         </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/grammar"
-                      element={
+                      } />
+                      <Route path="/profile" element={
                         <ProtectedRoute>
-                          <GrammarList />
+                          <Profile />
                         </ProtectedRoute>
-                      }
-                    />
-                  </Routes>
-                </main>
-                <footer className="text-center p-4 text-muted">
-                  <p className="mb-0">&copy; {new Date().getFullYear()} TadokuGen - Japanese Reading Practice Generator</p>
-                </footer>
-              </div>
-            </GrammarProvider>
-          </VocabProvider>
-        </StoryProvider>
-      </AuthProvider>
+                      } />
+                      <Route path="/stories" element={
+                        <ProtectedRoute>
+                          <Stories />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/story/:id" element={
+                        <ProtectedRoute>
+                          <Story />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/story-review/:id" element={
+                        <ProtectedRoute>
+                          <StoryReview />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/difficult-words" element={
+                        <ProtectedRoute>
+                          <DifficultWords />
+                        </ProtectedRoute>
+                      } />
+                      <Route
+                        path="/vocabulary"
+                        element={
+                          <ProtectedRoute>
+                            <VocabList />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/grammar"
+                        element={
+                          <ProtectedRoute>
+                            <GrammarList />
+                          </ProtectedRoute>
+                        }
+                      />
+                    </Routes>
+                  </main>
+                  
+                  {/* Footer */}
+                  <footer className="text-center p-4 text-muted">
+                    <p className="mb-0">&copy; {new Date().getFullYear()} TadokuGen - Japanese Reading Practice Generator</p>
+                  </footer>
+                  
+                  {/* Floating Theme Toggle for Mobile */}
+                  <div className="floating-theme-toggle">
+                    <ThemeToggle />
+                  </div>
+                </div>
+              </GrammarProvider>
+            </VocabProvider>
+          </StoryProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </Router>
   );
 }

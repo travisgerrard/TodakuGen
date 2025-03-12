@@ -1,0 +1,79 @@
+.theme-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-color);
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.theme-toggle-btn:hover {
+  background-color: var(--light-gray);
+}
+
+.theme-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* For mobile devices */
+@media (max-width: 768px) {
+  .theme-toggle-btn {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .theme-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* For small mobile devices */
+@media (max-width: 480px) {
+  .theme-toggle-btn {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .theme-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Add a floating theme toggle for mobile */
+.floating-theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  background-color: var(--primary-light);
+  border-radius: 50%;
+  box-shadow: var(--box-shadow);
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-theme-toggle .theme-toggle-btn {
+  color: white;
+}
+
+.floating-theme-toggle .theme-toggle-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+} 

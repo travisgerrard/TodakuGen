@@ -9,6 +9,9 @@ jspm_packages/
 .env.test.local
 .env.production.local
 
+client-server.js
+ecosystem.config.js
+
 # Build outputs
 /build
 /dist

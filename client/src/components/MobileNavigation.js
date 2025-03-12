@@ -42,7 +42,8 @@ const MobileNavigation = () => {
           
           {isAuthenticated ? (
             <>
-              <Link to="/stories" onClick={closeMenu}>Stories</Link>
+              <Link to="/stories" onClick={closeMenu}>My Stories</Link>
+              <Link to="/community" onClick={closeMenu}>Community</Link>
               <Link to="/vocabulary" onClick={closeMenu}>Vocabulary</Link>
               <Link to="/grammar" onClick={closeMenu}>Grammar</Link>
               <Link to="/difficult-words" onClick={closeMenu}>Difficult Words</Link>

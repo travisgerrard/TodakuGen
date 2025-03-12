@@ -11,6 +11,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Stories from './pages/Stories';
+import CommunityStories from './pages/CommunityStories';
 import StoryReader from './pages/StoryReader';
 import StoryReview from './pages/StoryReview';
 import VocabList from './pages/VocabList';
@@ -40,7 +41,8 @@ function AppNavigation() {
           {isAuthenticated ? (
             <nav className="nav">
               <Link to="/" className="nav-link">Home</Link>
-              <Link to="/stories" className="nav-link">Stories</Link>
+              <Link to="/stories" className="nav-link">My Stories</Link>
+              <Link to="/community" className="nav-link">Community</Link>
               <Link to="/vocabulary" className="nav-link">Vocabulary</Link>
               <Link to="/grammar" className="nav-link">Grammar</Link>
               <Link to="/difficult-words" className="nav-link">Difficult Words</Link>
@@ -107,6 +109,11 @@ function App() {
                       <Route path="/stories" element={
                         <ProtectedRoute>
                           <Stories />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/community" element={
+                        <ProtectedRoute>
+                          <CommunityStories />
                         </ProtectedRoute>
                       } />
                       <Route path="/story/:id" element={

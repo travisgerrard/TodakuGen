@@ -716,7 +716,7 @@ const getUserStories = async (req, res) => {
     // Get all stories created by this user
     const userStories = await Story.find({ user: req.user._id })
       .sort({ createdAt: -1 })
-      .select('title content kanjiLevel grammarLevel length topic createdAt');
+      .select('title content kanjiLevel grammarLevel length topic createdAt upvoteCount');
       
     console.log(`Found ${userStories.length} stories created by user: ${req.user.username}`);
     
@@ -744,6 +744,7 @@ const getUserStories = async (req, res) => {
       storyMap.set(storyObj._id.toString(), {
         ...storyObj,
         completed: false,
+        isOwner: true, // Mark that user owns this story
         storyId: storyObj._id
       });
     });
@@ -751,9 +752,11 @@ const getUserStories = async (req, res) => {
     // Add completed stories to the map, overwriting if they exist
     completedStories.forEach(story => {
       if (story._id) {
+        const existingStory = storyMap.get(story._id.toString());
         storyMap.set(story._id.toString(), {
           ...story,
-          storyId: story._id
+          storyId: story._id,
+          isOwner: existingStory?.isOwner || story.user?.toString() === req.user._id.toString()
         });
       }
     });
@@ -861,11 +864,193 @@ ${story.content}`;
   }
 };
 
+// @desc    Get community stories (all public stories)
+// @route   GET /api/stories/community
+// @access  Private
+const getCommunityStories = async (req, res) => {
+  try {
+    console.log(`Getting community stories, requested by user: ${req.user.username}`);
+    
+    // Find the user to get their upvoted and read stories
+    const user = await User.findById(req.user._id)
+      .populate({
+        path: 'readStories.storyId',
+        select: '_id'
+      })
+      .populate({
+        path: 'upvotedStories',
+        select: '_id'
+      });
+    
+    if (!user) {
+      console.log('User not found');
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Get IDs of stories the user has upvoted and read
+    const upvotedStoryIds = user.upvotedStories.map(story => story._id.toString());
+    const readStoryIds = user.readStories
+      .filter(item => item.storyId)
+      .map(item => item.storyId._id.toString());
+    
+    // Query for public stories, excluding the user's own stories
+    const publicStories = await Story.find({ 
+      isPublic: true, 
+      user: { $ne: req.user._id } // Exclude user's own stories
+    })
+    .sort({ upvoteCount: -1, createdAt: -1 }) // Sort by upvotes (desc) then creation date (desc)
+    .populate({
+      path: 'user',
+      select: 'username'
+    })
+    .select('title content kanjiLevel grammarLevel length topic createdAt upvoteCount user');
+    
+    console.log(`Found ${publicStories.length} public stories from the community`);
+    
+    // Map the stories and add user-specific flags
+    const communityStories = publicStories.map(story => {
+      const storyObj = story.toObject();
+      return {
+        ...storyObj,
+        isOwner: false,
+        hasUpvoted: upvotedStoryIds.includes(storyObj._id.toString()),
+        completed: readStoryIds.includes(storyObj._id.toString()),
+        username: storyObj.user?.username || 'Anonymous'
+      };
+    });
+    
+    return res.json(communityStories);
+  } catch (error) {
+    console.error('Error in getCommunityStories:', error);
+    return res.status(500).json({ 
+      message: 'Failed to get community stories',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Upvote a story
+// @route   POST /api/stories/:id/upvote
+// @access  Private
+const upvoteStory = async (req, res) => {
+  try {
+    const storyId = req.params.id;
+    const userId = req.user._id;
+    
+    console.log(`User ${req.user.username} is upvoting story ${storyId}`);
+    
+    // Find the story
+    const story = await Story.findById(storyId);
+    if (!story) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
+    
+    // Check if user is trying to upvote their own story
+    if (story.user.toString() === userId.toString()) {
+      return res.status(400).json({ message: 'You cannot upvote your own story' });
+    }
+    
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if user has already upvoted this story
+    const alreadyUpvoted = story.upvotes.some(upvoteId => upvoteId.toString() === userId.toString());
+    const userUpvotedIndex = user.upvotedStories.findIndex(id => id.toString() === storyId);
+    
+    let message;
+    
+    if (alreadyUpvoted) {
+      // User has already upvoted, so remove the upvote
+      story.upvotes = story.upvotes.filter(id => id.toString() !== userId.toString());
+      story.upvoteCount = Math.max(0, story.upvoteCount - 1);
+      
+      // Remove from user's upvoted stories
+      if (userUpvotedIndex !== -1) {
+        user.upvotedStories.splice(userUpvotedIndex, 1);
+      }
+      
+      message = 'Upvote removed';
+      console.log(`User ${req.user.username} removed upvote from story ${storyId}`);
+    } else {
+      // User hasn't upvoted, so add the upvote
+      story.upvotes.push(userId);
+      story.upvoteCount += 1;
+      
+      // Add to user's upvoted stories
+      if (userUpvotedIndex === -1) {
+        user.upvotedStories.push(storyId);
+      }
+      
+      message = 'Story upvoted';
+      console.log(`User ${req.user.username} added upvote to story ${storyId}`);
+    }
+    
+    // Save both story and user
+    await Promise.all([story.save(), user.save()]);
+    
+    return res.json({ 
+      message, 
+      upvoteCount: story.upvoteCount,
+      hasUpvoted: !alreadyUpvoted
+    });
+  } catch (error) {
+    console.error('Error in upvoteStory:', error);
+    return res.status(500).json({ 
+      message: 'Failed to upvote story',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Toggle story visibility (public/private)
+// @route   PUT /api/stories/:id/visibility
+// @access  Private
+const toggleStoryVisibility = async (req, res) => {
+  try {
+    const storyId = req.params.id;
+    const userId = req.user._id;
+    
+    console.log(`User ${req.user.username} is toggling visibility for story ${storyId}`);
+    
+    // Find the story
+    const story = await Story.findById(storyId);
+    if (!story) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
+    
+    // Make sure the user is the owner of the story
+    if (story.user.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'You can only change visibility of your own stories' });
+    }
+    
+    // Toggle the visibility
+    story.isPublic = !story.isPublic;
+    await story.save();
+    
+    return res.json({ 
+      message: story.isPublic ? 'Story is now public' : 'Story is now private',
+      isPublic: story.isPublic
+    });
+  } catch (error) {
+    console.error('Error in toggleStoryVisibility:', error);
+    return res.status(500).json({ 
+      message: 'Failed to toggle story visibility',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   generateStory,
   getStoryById,
   markStoryAsComplete,
   getStoryReview,
   getUserStories,
-  translateStory
+  translateStory,
+  getCommunityStories,
+  upvoteStory,
+  toggleStoryVisibility
 }; 

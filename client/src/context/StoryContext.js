@@ -89,6 +89,93 @@ export const StoryProvider = ({ children }) => {
     }
   }, [isAuthenticated, token, refreshUserData]);
 
+  // Get community stories (all public stories)
+  const getCommunityStories = useCallback(async (retryAttempt = 0) => {
+    try {
+      if (!isAuthenticated || !token) {
+        console.log('User not authenticated, cannot fetch community stories');
+        return [];
+      }
+
+      setLoading(true);
+      setError(null);
+
+      console.log('Fetching community stories from API');
+      const { data } = await axios.get('/api/stories/community', getAuthHeaders());
+      
+      if (!Array.isArray(data)) {
+        console.error('Expected array of community stories but got:', data);
+        setLoading(false);
+        return [];
+      }
+      
+      console.log(`Fetched ${data.length} community stories`);
+      setLoading(false);
+      return data;
+    } catch (error) {
+      handleApiError(error, 'Failed to fetch community stories');
+      
+      // Retry once if authentication error (might be fixed by the refresh)
+      if (retryAttempt === 0 && 
+          error.response && 
+          (error.response.status === 401 || error.response.status === 403)) {
+        console.log('Retrying getCommunityStories after auth error');
+        // Short delay before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return getCommunityStories(1);
+      }
+      
+      // Return empty array to prevent cascading errors
+      return [];
+    }
+  }, [isAuthenticated, token, refreshUserData]);
+
+  // Upvote or remove upvote from a story
+  const upvoteStory = useCallback(async (storyId) => {
+    try {
+      if (!isAuthenticated || !token) {
+        console.log('User not authenticated, cannot upvote story');
+        return null;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      console.log(`Upvoting story with ID: ${storyId}`);
+      const { data } = await axios.post(`/api/stories/${storyId}/upvote`, {}, getAuthHeaders());
+      
+      setLoading(false);
+      console.log(`Upvote response:`, data);
+      return data;
+    } catch (error) {
+      handleApiError(error, 'Failed to upvote story');
+      return null;
+    }
+  }, [isAuthenticated, token, refreshUserData]);
+
+  // Toggle story visibility (public/private)
+  const toggleStoryVisibility = useCallback(async (storyId) => {
+    try {
+      if (!isAuthenticated || !token) {
+        console.log('User not authenticated, cannot change story visibility');
+        return null;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      console.log(`Toggling visibility for story with ID: ${storyId}`);
+      const { data } = await axios.put(`/api/stories/${storyId}/visibility`, {}, getAuthHeaders());
+      
+      setLoading(false);
+      console.log(`Visibility toggle response:`, data);
+      return data;
+    } catch (error) {
+      handleApiError(error, 'Failed to change story visibility');
+      return null;
+    }
+  }, [isAuthenticated, token, refreshUserData]);
+
   // Generate a new story
   const generateStory = async (params = {}) => {
     try {
@@ -257,13 +344,19 @@ export const StoryProvider = ({ children }) => {
         currentStory,
         loading,
         error,
+        // Story CRUD operations
         getUserStories,
         generateStory,
         getStoryById,
         markStoryAsComplete,
         getStoryReview,
         translateStory,
-        clearError: () => setError(null),
+        // Community features
+        getCommunityStories,
+        upvoteStory,
+        toggleStoryVisibility,
+        setError,
+        isLoading: loading,
       }}
     >
       {children}

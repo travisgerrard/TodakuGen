@@ -1306,3 +1306,67 @@ footer {
   background-color: #333;
   color: #b0b0b0;
 }
+
+/* Upvote button styles */
+.btn-upvote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--border-radius-sm);
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.btn-upvote .bi {
+  font-size: 0.9rem;
+}
+
+[data-theme="dark"] .btn-upvote {
+  background-color: rgba(90, 120, 237, 0.1);
+  color: var(--primary-light);
+}
+
+[data-theme="dark"] .btn-upvote:hover {
+  background-color: rgba(90, 120, 237, 0.2);
+}
+
+/* Visibility toggle button */
+.visibility-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.visibility-toggle:hover {
+  background-color: var(--light-gray);
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .visibility-toggle {
+  color: var(--dark-gray);
+}
+
+[data-theme="dark"] .visibility-toggle:hover {
+  background-color: var(--medium-gray);
+  color: var(--primary-light);
+}
+
+/* Story author info */
+.story-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+}
+
+.story-author .bi {
+  font-size: 0.9rem;
+}

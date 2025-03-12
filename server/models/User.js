@@ -57,6 +57,12 @@ const UserSchema = new mongoose.Schema({
         default: Date.now
       }
     }
+  ],
+  upvotedStories: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Story'
+    }
   ]
 }, {
   timestamps: true

@@ -57,6 +57,20 @@ const StorySchema = new mongoose.Schema({
   audioUrl: {
     type: String,
     default: null
+  },
+  upvotes: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }
+  ],
+  upvoteCount: {
+    type: Number,
+    default: 0
+  },
+  isPublic: {
+    type: Boolean,
+    default: true
   }
 }, {
   timestamps: true

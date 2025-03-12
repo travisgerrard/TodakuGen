@@ -25,7 +25,7 @@ router.post('/:id/complete', protect, markStoryAsComplete);
 router.get('/:id/review', protect, getStoryReview);
 router.post('/:id/translate', protect, translateStory);
 router.post('/:id/upvote', protect, upvoteStory);
-router.put('/:id/visibility', protect, toggleStoryVisibility);
+router.put('/:id/toggle-visibility', protect, toggleStoryVisibility);
 
 // Get user stories - this is the root route
 router.get('/', protect, getUserStories);

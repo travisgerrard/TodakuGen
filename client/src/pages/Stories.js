@@ -68,8 +68,22 @@ const Stories = () => {
   };
 
   const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    if (!dateString) return 'Unknown date';
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date string:', dateString);
+        return 'Unknown date';
+      }
+      
+      // Format date with proper options
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
+      return date.toLocaleDateString(undefined, options);
+    } catch (error) {
+      console.error('Error formatting date:', error, dateString);
+      return 'Unknown date';
+    }
   };
 
   return (

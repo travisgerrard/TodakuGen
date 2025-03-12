@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import StoryContext from '../context/StoryContext';
-import { useStory } from '../context/StoryContext';
 import { useAuth } from '../context/AuthContext';
 
 const Story = () => {
@@ -45,7 +44,7 @@ const Story = () => {
         
         // Request translation automatically if it doesn't exist
         if (!response.data.englishContent || response.data.englishContent.length < 10) {
-          requestTranslation();
+          requestTranslation(response.data);
         }
       } catch (err) {
         console.error('Error fetching story:', err);
@@ -57,17 +56,18 @@ const Story = () => {
     };
     
     fetchStory();
-  }, [id]);
+  }, [id, requestTranslation]);
   
   // Request translation function
-  const requestTranslation = async () => {
-    if (!story || !id) {
+  const requestTranslation = useCallback(async (data) => {
+    const storyData = data || story;
+    if (!storyData || !id) {
       console.error('Cannot request translation: No story or story ID available');
       return;
     }
 
     // If we already have a translation, no need to request again
-    if (story.englishContent && story.englishContent.length > 10) {
+    if (storyData.englishContent && storyData.englishContent.length > 10) {
       console.log('Story already has translation');
       return;
     }
@@ -101,7 +101,7 @@ const Story = () => {
     } finally {
       setIsTranslating(false);
     }
-  };
+  }, [id, story, translateStory]);
   
   // Handle upvote
   const handleUpvote = async () => {
@@ -174,13 +174,15 @@ const Story = () => {
       const date = new Date(dateString);
       // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.error('Invalid date:', dateString);
+        console.error('Invalid date string:', dateString);
         return 'Unknown date';
       }
-      const options = { year: 'numeric', month: 'short', day: 'numeric' };
+      
+      // Format date with proper options
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
       return date.toLocaleDateString(undefined, options);
     } catch (error) {
-      console.error('Error formatting date:', error);
+      console.error('Error formatting date:', error, dateString);
       return 'Unknown date';
     }
   };

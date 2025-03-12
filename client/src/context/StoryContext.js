@@ -165,7 +165,7 @@ export const StoryProvider = ({ children }) => {
       setError(null);
 
       console.log(`Toggling visibility for story with ID: ${storyId}`);
-      const { data } = await axios.put(`/api/stories/${storyId}/visibility`, {}, getAuthHeaders());
+      const { data } = await axios.put(`/api/stories/${storyId}/toggle-visibility`, {}, getAuthHeaders());
       
       setLoading(false);
       console.log(`Visibility toggle response:`, data);

@@ -1,5 +1,6 @@
 import { createContext, useState, useCallback, useContext } from 'react';
 import axios from 'axios';
+import { useAuth } from './AuthContext';
 
 const StoryContext = createContext();
 
@@ -17,21 +18,47 @@ export const StoryProvider = ({ children }) => {
   const [currentStory, setCurrentStory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { refreshUserData, isAuthenticated, token } = useAuth();
+
+  // Get API headers with current token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    };
+  };
+
+  // Handle API errors
+  const handleApiError = (error, errorMessage) => {
+    console.error(errorMessage, error);
+    
+    // If unauthorized, try to refresh user data
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      console.log('Authentication error in StoryContext - attempting to refresh user data');
+      refreshUserData();
+      setError('Session expired. Please try again after logging in.');
+    } else {
+      setError(error.response?.data?.message || errorMessage);
+    }
+    
+    setLoading(false);
+  };
 
   // Get user stories
-  const getUserStories = useCallback(async () => {
+  const getUserStories = useCallback(async (retryAttempt = 0) => {
     try {
+      if (!isAuthenticated || !token) {
+        console.log('User not authenticated, cannot fetch stories');
+        return [];
+      }
+
       setLoading(true);
       setError(null);
 
-      const config = {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      };
-
       console.log('Fetching user stories from API');
-      const { data } = await axios.get('/api/stories', config);
+      const { data } = await axios.get('/api/stories', getAuthHeaders());
       
       if (!Array.isArray(data)) {
         console.error('Expected array of stories but got:', data);
@@ -45,25 +72,32 @@ export const StoryProvider = ({ children }) => {
       setLoading(false);
       return data;
     } catch (error) {
-      console.error('Error fetching user stories:', error);
-      setError(error.response?.data?.message || 'Failed to fetch stories');
-      setLoading(false);
+      handleApiError(error, 'Failed to fetch stories');
+      
+      // Retry once if authentication error (might be fixed by the refresh)
+      if (retryAttempt === 0 && 
+          error.response && 
+          (error.response.status === 401 || error.response.status === 403)) {
+        console.log('Retrying getUserStories after auth error');
+        // Short delay before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return getUserStories(1);
+      }
+      
       // Return empty array to prevent cascading errors
       return [];
     }
-  }, []);
+  }, [isAuthenticated, token, refreshUserData]);
 
   // Generate a new story
   const generateStory = async (params = {}) => {
     try {
+      if (!isAuthenticated || !token) {
+        throw new Error('Authentication required');
+      }
+
       setLoading(true);
       setError(null);
-
-      const config = {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      };
 
       // Build query string from params
       const queryParams = new URLSearchParams();
@@ -75,7 +109,7 @@ export const StoryProvider = ({ children }) => {
 
       const { data } = await axios.get(
         `/api/stories/generate?${queryParams.toString()}`,
-        config
+        getAuthHeaders()
       );
 
       console.log('Generated story response:', data);
@@ -87,132 +121,67 @@ export const StoryProvider = ({ children }) => {
       // Use storyId from the response, which is what the server sends
       return data.storyId; // Return the id for redirecting
     } catch (error) {
-      console.error('Error generating story:', error);
-      setError(error.response?.data?.message || 'Failed to generate story');
-      setLoading(false);
+      handleApiError(error, 'Failed to generate story');
       throw error;
     }
   };
 
   // Get a story by ID
-  const getStoryById = async (id) => {
+  const getStoryById = async (storyId) => {
     try {
+      if (!storyId) {
+        setError('Story ID is required');
+        return null;
+      }
+
+      if (!isAuthenticated || !token) {
+        throw new Error('Authentication required');
+      }
+
       setLoading(true);
       setError(null);
 
-      // Validate ID
-      if (!id) {
-        setError('Invalid story ID');
-        setLoading(false);
-        return null;
-      }
-
-      const config = {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      };
-
-      console.log(`Requesting story data from API for ID: ${id}`);
-      const response = await axios.get(`/api/stories/${id}`, config);
-      const data = response.data;
+      console.log(`Fetching story with ID: ${storyId}`);
+      const { data } = await axios.get(`/api/stories/${storyId}`, getAuthHeaders());
       
-      // Check if we have English content, if not we might need to request it from the server
-      const hasEnglishContent = data.englishContent && data.englishContent.length > 10;
-      console.log('Received story data:', {
-        title: data.title,
-        contentLength: data.content?.length || 0,
-        englishContentLength: data.englishContent?.length || 0,
-        hasEnglishContent
-      });
-      
-      // If there's no English content, try to request a translation
-      if (data.content && !hasEnglishContent) {
-        console.log("Story has no English translation. Requesting one now...");
-        try {
-          const translationResponse = await axios.post(
-            `/api/stories/${id}/translate`, 
-            {}, 
-            config
-          );
-          
-          if (translationResponse.data?.englishContent) {
-            data.englishContent = translationResponse.data.englishContent;
-            console.log(`Got translation (${data.englishContent.length} chars)`);
-          }
-        } catch (err) {
-          console.error("Failed to get translation:", err);
-          // Continue without translation if it fails
-        }
-      }
-      
-      // Validate received data
-      if (!data || typeof data !== 'object') {
-        console.error('Invalid data format received:', data);
-        setError('Invalid data received from server');
-        setLoading(false);
-        return null;
-      }
-      
-      // Check required fields
-      if (!data.title || !data.content) {
-        console.error('Missing required fields in story data:', data);
-        setError('Story data is incomplete');
-        setLoading(false);
-        return null;
-      }
-      
-      // Create a valid story object with all required fields
-      const storyData = {
-        storyId: data.storyId || id,
-        title: data.title || 'Untitled Story',
-        content: data.content || '',
-        englishContent: data.englishContent || '',
-        kanjiLevel: data.kanjiLevel || 0,
-        grammarLevel: data.grammarLevel || 0,
-        length: data.length || 'unknown',
-        topic: data.topic || 'general',
-      };
-      
-      setCurrentStory(storyData);
+      setCurrentStory(data);
       setLoading(false);
-      return storyData;
+      return data;
     } catch (error) {
-      console.error('Error fetching story:', error);
-      // Get detailed error information
-      let errorMessage = 'Failed to fetch story';
-      if (error.response) {
-        // Server responded with an error status
-        errorMessage = `Server error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`;
-        console.error('Server response:', error.response.data);
-      } else if (error.request) {
-        // Request was made but no response received
-        errorMessage = 'No response from server - check your connection';
-      } else {
-        // Something happened in setting up the request
-        errorMessage = `Request error: ${error.message}`;
-      }
-      
-      setError(errorMessage);
-      setLoading(false);
+      handleApiError(error, 'Failed to fetch story');
       return null;
     }
   };
 
   // Mark a story as complete
-  const markStoryAsComplete = async (id) => {
+  const markStoryAsComplete = async (storyId) => {
     try {
-      const config = {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      };
+      if (!storyId) {
+        setError('Story ID is required');
+        return false;
+      }
 
-      await axios.post(`/api/stories/${id}/complete`, {}, config);
+      if (!isAuthenticated || !token) {
+        throw new Error('Authentication required');
+      }
+
+      setLoading(true);
+      setError(null);
+
+      await axios.post(`/api/stories/${storyId}/complete`, {}, getAuthHeaders());
+      
+      // Update the local stories list to mark this story as completed
+      setStories((prevStories) =>
+        prevStories.map((story) =>
+          story.storyId === storyId ? { ...story, completed: true } : story
+        )
+      );
+      
+      setLoading(false);
       return true;
     } catch (error) {
-      console.error('Error marking story as complete:', error);
-      throw error;
+      handleApiError(error, 'Failed to mark story as complete');
+      return false;
     }
   };
 
@@ -250,53 +219,34 @@ export const StoryProvider = ({ children }) => {
     }
   };
   
-  // Request translation for a story
-  const translateStory = async (id) => {
+  // Translate a story
+  const translateStory = async (storyId) => {
     try {
-      if (!id) {
-        console.error('No story ID provided for translation');
-        throw new Error('Story ID is required');
+      if (!storyId) {
+        setError('Story ID is required');
+        return null;
+      }
+
+      if (!isAuthenticated || !token) {
+        throw new Error('Authentication required');
+      }
+
+      setLoading(true);
+      setError(null);
+
+      console.log(`Requesting translation for story with ID: ${storyId}`);
+      const { data } = await axios.post(`/api/stories/${storyId}/translate`, {}, getAuthHeaders());
+      
+      // Update current story if it's the same one
+      if (currentStory && currentStory.storyId === storyId) {
+        setCurrentStory({ ...currentStory, englishContent: data.englishContent });
       }
       
-      console.log(`Requesting translation for story ID: ${id}`);
-      
-      const config = {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      };
-      
-      const response = await axios.post(`/api/stories/${id}/translate`, {}, config);
-      
-      if (!response.data || !response.data.englishContent) {
-        console.error('Translation response did not contain expected data');
-        throw new Error('Invalid translation response');
-      }
-      
-      console.log(`Translation received (${response.data.englishContent.length} chars)`);
-      
-      // If we have the current story loaded and it matches this ID, update it
-      if (currentStory && currentStory.storyId === id) {
-        setCurrentStory({
-          ...currentStory,
-          englishContent: response.data.englishContent
-        });
-      }
-      
-      return response.data.englishContent;
+      setLoading(false);
+      return data.englishContent;
     } catch (error) {
-      console.error('Error translating story:', error);
-      let errorMessage = 'Failed to translate story';
-      
-      if (error.response) {
-        errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
-      } else if (error.request) {
-        errorMessage = 'No response from server - check your connection';
-      } else {
-        errorMessage = error.message || 'Unknown error occurred';
-      }
-      
-      throw new Error(errorMessage);
+      handleApiError(error, 'Failed to translate story');
+      return null;
     }
   };
 
@@ -306,14 +256,14 @@ export const StoryProvider = ({ children }) => {
         stories,
         currentStory,
         loading,
-        isLoading: loading,
         error,
         getUserStories,
         generateStory,
         getStoryById,
         markStoryAsComplete,
         getStoryReview,
-        translateStory
+        translateStory,
+        clearError: () => setError(null),
       }}
     >
       {children}

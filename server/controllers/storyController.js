@@ -976,10 +976,8 @@ const upvoteStory = async (req, res) => {
       return res.status(404).json({ message: 'Story not found' });
     }
     
-    // Check if user is trying to upvote their own story
-    if (story.user.toString() === userId.toString()) {
-      return res.status(400).json({ message: 'You cannot upvote your own story' });
-    }
+    // Removed the restriction for upvoting own stories
+    // Users can now upvote their own stories
     
     // Find the user
     const user = await User.findById(userId);

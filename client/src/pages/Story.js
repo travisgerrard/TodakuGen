@@ -21,48 +21,10 @@ const Story = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationError, setTranslationError] = useState('');
   
-  useEffect(() => {
-    const fetchStory = async () => {
-      try {
-        setLoading(true);
-        console.log("Fetching story with ID:", id);
-        const response = await api.get(`/stories/${id}`);
-        console.log("API Response:", response.data);
-        setStory(response.data);
-        
-        // Set upvote information if available
-        if (response.data.hasUpvoted !== undefined) {
-          console.log("Setting hasUpvoted to:", response.data.hasUpvoted);
-          setHasUpvoted(response.data.hasUpvoted);
-        }
-        if (response.data.upvoteCount !== undefined) {
-          console.log("Setting upvoteCount to:", response.data.upvoteCount);
-          setUpvoteCount(response.data.upvoteCount);
-        }
-        
-        setError(null);
-        
-        // Request translation automatically if it doesn't exist
-        if (!response.data.englishContent || response.data.englishContent.length < 10) {
-          requestTranslation(response.data);
-        }
-      } catch (err) {
-        console.error('Error fetching story:', err);
-        console.error('Error response:', err.response?.data);
-        setError('Failed to load the story. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchStory();
-  }, [id, requestTranslation]);
-  
-  // Request translation function
-  const requestTranslation = useCallback(async (data) => {
-    const storyData = data || story;
+  // Request translation function - MOVED BEFORE useEffect
+  const requestTranslation = useCallback(async (storyData) => {
     if (!storyData || !id) {
-      console.error('Cannot request translation: No story or story ID available');
+      console.error('Cannot request translation: No story data or story ID available');
       return;
     }
 
@@ -101,7 +63,44 @@ const Story = () => {
     } finally {
       setIsTranslating(false);
     }
-  }, [id, story, translateStory]);
+  }, [id, translateStory]); // Removed story dependency since it's passed as a param
+  
+  useEffect(() => {
+    const fetchStory = async () => {
+      try {
+        setLoading(true);
+        console.log("Fetching story with ID:", id);
+        const response = await api.get(`/stories/${id}`);
+        console.log("API Response:", response.data);
+        setStory(response.data);
+        
+        // Set upvote information if available
+        if (response.data.hasUpvoted !== undefined) {
+          console.log("Setting hasUpvoted to:", response.data.hasUpvoted);
+          setHasUpvoted(response.data.hasUpvoted);
+        }
+        if (response.data.upvoteCount !== undefined) {
+          console.log("Setting upvoteCount to:", response.data.upvoteCount);
+          setUpvoteCount(response.data.upvoteCount);
+        }
+        
+        setError(null);
+        
+        // Request translation automatically if it doesn't exist
+        if (!response.data.englishContent || response.data.englishContent.length < 10) {
+          requestTranslation(response.data);
+        }
+      } catch (err) {
+        console.error('Error fetching story:', err);
+        console.error('Error response:', err.response?.data);
+        setError('Failed to load the story. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchStory();
+  }, [id, requestTranslation]);
   
   // Handle upvote
   const handleUpvote = async () => {
@@ -207,17 +206,15 @@ const Story = () => {
             <div className="d-flex justify-content-between align-items-start">
               <h1 className="mb-3">{title}</h1>
               
-              {/* Upvote button - only show if user isn't the author */}
-              {!isAuthor && (
-                <button 
-                  className={`btn ${hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
-                  onClick={handleUpvote}
-                  disabled={isUpvoting}
-                >
-                  <i className={`bi bi-hand-thumbs-up${hasUpvoted ? '-fill' : ''} me-1`}></i>
-                  {upvoteCount} {upvoteCount === 1 ? 'upvote' : 'upvotes'}
-                </button>
-              )}
+              {/* Upvote button - always show for all users */}
+              <button 
+                className={`btn ${hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
+                onClick={handleUpvote}
+                disabled={isUpvoting}
+              >
+                <i className={`bi bi-hand-thumbs-up${hasUpvoted ? '-fill' : ''} me-1`}></i>
+                {upvoteCount} {upvoteCount === 1 ? 'upvote' : 'upvotes'}
+              </button>
             </div>
             
             <div className="d-flex flex-wrap gap-3 mb-2">

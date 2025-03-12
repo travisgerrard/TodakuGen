@@ -649,6 +649,7 @@ footer {
   border-radius: var(--border-radius);
   box-shadow: var(--box-shadow);
   transition: background-color var(--transition), color var(--transition);
+  letter-spacing: 0.01em;
 }
 
 .story-content p {
@@ -658,16 +659,32 @@ footer {
 
 /* Improved readability for Japanese text in story content */
 .story-content .japanese-text {
-  color: var(--story-text-color);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  text-align: justify;
+  font-size: 1.2rem;
 }
 
+/* Mobile responsive adjustments */
 @media (max-width: 768px) {
   .story-content {
     padding: 1rem;
-    font-size: 1rem;
-    line-height: 1.8;
+    font-size: 1.05rem;
+  }
+  
+  .story-content .japanese-text {
+    font-size: 1.1rem;
+  }
+  
+  .english-content {
+    margin-top: 1.5rem;
+    padding: 1rem;
+  }
+  
+  ruby {
+    margin-bottom: 0;
+  }
+  
+  rt {
+    font-size: 0.5em;
   }
 }
 
@@ -675,17 +692,27 @@ footer {
 .english-content {
   margin-top: 2rem;
   padding: 1.5rem;
-  background-color: var(--story-background);
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
-  color: var(--story-text-color);
-  border-left: 4px solid var(--primary-color);
-  transition: background-color var(--transition), color var(--transition);
+  background-color: var(--light-gray);
+  border-radius: 8px;
+  font-family: 'Georgia', serif;
+  line-height: 1.6;
+  color: var(--text-color);
 }
 
 .english-content h3 {
-  color: var(--primary-color);
+  font-size: 1.3rem;
   margin-bottom: 1rem;
+  color: var(--secondary-color);
+}
+
+[data-theme="dark"] .english-content {
+  background-color: rgba(66, 66, 66, 0.4);
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .english-content h3 {
+  color: #a0c4ff;
 }
 
 /* Word Actions */
@@ -1369,4 +1396,27 @@ footer {
 
 .story-author .bi {
   font-size: 0.9rem;
+}
+
+/* Ruby (furigana) styles */
+ruby {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: bottom;
+  line-height: 1.2;
+  margin-bottom: 0.2em;
+}
+
+rt {
+  font-size: 0.6em;
+  color: var(--primary-color);
+  text-align: center;
+  line-height: 1;
+  margin-bottom: 0.15em;
+}
+
+[data-theme="dark"] rt {
+  color: var(--primary-light); 
+  opacity: 0.9;
 }

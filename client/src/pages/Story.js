@@ -2,35 +2,66 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import StoryContext from '../context/StoryContext';
+import { useStory } from '../context/StoryContext';
+import { useAuth } from '../context/AuthContext';
+import { processStoryContent } from '../utils/textProcessing';
 
 const Story = () => {
   const { id } = useParams();
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { translateStory } = useContext(StoryContext);
+  const { translateStory, upvoteStory } = useContext(StoryContext);
+  const { user } = useAuth();
+  
+  // Upvote state
+  const [hasUpvoted, setHasUpvoted] = useState(false);
+  const [upvoteCount, setUpvoteCount] = useState(0);
+  const [isUpvoting, setIsUpvoting] = useState(false);
   
   // Translation state
-  const [showEnglish, setShowEnglish] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationError, setTranslationError] = useState('');
+  
+  // Processed content with furigana
+  const [processedParagraphs, setProcessedParagraphs] = useState([]);
   
   useEffect(() => {
     const fetchStory = async () => {
       try {
-  setLoading(true);
-  console.log("Fetching story with ID:", id);
-  const response = await api.get(`/stories/${id}`);
-  console.log("API Response:", response.data);
-  setStory(response.data);
-  setError(null);
-} catch (err) {
-  console.error('Error fetching story:', err);
-  console.error('Error response:', err.response?.data);
-  setError('Failed to load the story. Please try again.');
-} finally {
-  setLoading(false);
-}
+        setLoading(true);
+        console.log("Fetching story with ID:", id);
+        const response = await api.get(`/stories/${id}`);
+        console.log("API Response:", response.data);
+        setStory(response.data);
+        
+        // Process the content with furigana
+        if (response.data.content) {
+          const processed = processStoryContent(response.data.content);
+          setProcessedParagraphs(processed);
+        }
+        
+        // Set upvote information if available
+        if (response.data.hasUpvoted !== undefined) {
+          setHasUpvoted(response.data.hasUpvoted);
+        }
+        if (response.data.upvoteCount !== undefined) {
+          setUpvoteCount(response.data.upvoteCount);
+        }
+        
+        setError(null);
+        
+        // Request translation automatically if it doesn't exist
+        if (!response.data.englishContent || response.data.englishContent.length < 10) {
+          requestTranslation();
+        }
+      } catch (err) {
+        console.error('Error fetching story:', err);
+        console.error('Error response:', err.response?.data);
+        setError('Failed to load the story. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     };
     
     fetchStory();
@@ -45,8 +76,7 @@ const Story = () => {
 
     // If we already have a translation, no need to request again
     if (story.englishContent && story.englishContent.length > 10) {
-      console.log('Story already has translation, showing it');
-      setShowEnglish(true);
+      console.log('Story already has translation');
       return;
     }
 
@@ -67,9 +97,6 @@ const Story = () => {
           ...prevStory,
           englishContent: englishContent
         }));
-        
-        // Show the translation
-        setShowEnglish(true);
       } else {
         throw new Error('Translation response missing expected data');
       }
@@ -84,21 +111,23 @@ const Story = () => {
     }
   };
   
-  const toggleEnglish = () => {
-    console.log('Toggle English called, current state:', showEnglish);
+  // Handle upvote
+  const handleUpvote = async () => {
+    if (!id || isUpvoting) return;
     
-    // If we don't have translation yet, request it
-    if (!showEnglish && story && (!story.englishContent || story.englishContent.length < 10)) {
-      console.log('No translation available, requesting one...');
-      requestTranslation();
-      return;
+    try {
+      setIsUpvoting(true);
+      const result = await upvoteStory(id);
+      
+      if (result) {
+        setHasUpvoted(result.hasUpvoted);
+        setUpvoteCount(result.upvoteCount);
+      }
+    } catch (error) {
+      console.error('Error upvoting story:', error);
+    } finally {
+      setIsUpvoting(false);
     }
-    
-    // Otherwise just toggle visibility
-    setShowEnglish(prev => {
-      console.log('Setting showEnglish to:', !prev);
-      return !prev;
-    });
   };
   
   if (loading) {
@@ -137,7 +166,7 @@ const Story = () => {
     );
   }
   
-  const { title, content, englishContent, kanjiLevel, grammarLevel, createdAt } = story;
+  const { title, content, englishContent, kanjiLevel, grammarLevel, createdAt, user: storyUser } = story;
   
   // Process content to handle possible null or undefined
   const contentParagraphs = content ? content.split('\n') : ['No content available.'];
@@ -145,9 +174,23 @@ const Story = () => {
   
   const formatDate = (dateString) => {
     if (!dateString) return 'Unknown date';
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date:', dateString);
+        return 'Unknown date';
+      }
+      const options = { year: 'numeric', month: 'short', day: 'numeric' };
+      return date.toLocaleDateString(undefined, options);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Unknown date';
+    }
   };
+  
+  // Check if current user is the story author
+  const isAuthor = storyUser && user && storyUser.toString() === user._id;
   
   return (
     <div className="page-container">
@@ -163,7 +206,22 @@ const Story = () => {
       <section className="section fade-in">
         <div className="card shadow-sm mb-4">
           <div className="card-body">
-            <h1 className="mb-3">{title}</h1>
+            <div className="d-flex justify-content-between align-items-start">
+              <h1 className="mb-3">{title}</h1>
+              
+              {/* Upvote button - only show if user isn't the author */}
+              {!isAuthor && (
+                <button 
+                  className={`btn ${hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={handleUpvote}
+                  disabled={isUpvoting}
+                >
+                  <i className={`bi bi-hand-thumbs-up${hasUpvoted ? '-fill' : ''} me-1`}></i>
+                  {upvoteCount} {upvoteCount === 1 ? 'upvote' : 'upvotes'}
+                </button>
+              )}
+            </div>
+            
             <div className="d-flex flex-wrap gap-3 mb-2">
               <div className="badge bg-primary p-2">
                 <i className="bi bi-translate me-2"></i>
@@ -186,7 +244,11 @@ const Story = () => {
         <div className="card shadow-sm">
           <div className="card-body">
             <div className="story-content japanese-text">
-              {content ? (
+              {processedParagraphs.length > 0 ? (
+                processedParagraphs.map((paragraph, index) => (
+                  <p key={index} dangerouslySetInnerHTML={{ __html: paragraph }}></p>
+                ))
+              ) : content ? (
                 content.split('\n').map((paragraph, index) => (
                   <p key={index}>{paragraph}</p>
                 ))
@@ -195,100 +257,35 @@ const Story = () => {
               )}
             </div>
             
-            {showEnglish && (
-              <div className="mt-4 english-translation">
-                <h3 className="mb-3">English Translation</h3>
-                {englishParagraphs.length > 0 ? (
-                  <div className="card">
-                    <div className="card-body">
-                      {englishParagraphs.map((paragraph, index) => (
-                        <p key={`en-${index}`} className="mb-3">{paragraph || ' '}</p>
-                      ))}
-                    </div>
+            {/* English translation section - always visible */}
+            <div className="mt-4 english-content">
+              <h3 className="mb-3">English Translation</h3>
+              {englishParagraphs.length > 0 ? (
+                englishParagraphs.map((paragraph, index) => (
+                  <p key={`en-${index}`} className="mb-3">{paragraph || ' '}</p>
+                ))
+              ) : isTranslating ? (
+                <div className="text-center p-4">
+                  <div className="spinner-border text-primary mb-3" role="status">
+                    <span className="visually-hidden">Loading translation...</span>
                   </div>
-                ) : (
-                  <div className="card bg-light">
-                    <div className="card-body text-center p-5">
-                      <div className="spinner-border text-primary mb-3" role="status">
-                        <span className="visually-hidden">Loading translation...</span>
-                      </div>
-                      <h4>Generating English Translation...</h4>
-                      <p className="text-muted">This may take a few moments. The translation will be saved for future use.</p>
+                  <h4>Generating English Translation...</h4>
+                  <p className="text-muted">This may take a few moments. The translation will be saved for future use.</p>
+                </div>
+              ) : (
+                <div className="text-center p-4">
+                  <p className="text-muted">No translation available.</p>
+                  {translationError && (
+                    <div className="alert alert-danger mt-3" role="alert">
+                      {translationError}
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-      
-      {/* GUARANTEED VISIBLE TRANSLATION PANEL - Outside of all conditionals */}
-      <div style={{
-        position: 'fixed',
-        bottom: '20px',
-        left: '0',
-        right: '0',
-        zIndex: '9999',
-        textAlign: 'center'
-      }}>
-        <div style={{
-          display: 'inline-block',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          padding: '15px 25px',
-          border: '3px solid #3498db',
-          maxWidth: '500px',
-          margin: '0 auto'
-        }}>
-          <div className="d-flex flex-column">
-            {translationError && (
-              <div className="alert alert-danger mb-3" role="alert">
-                {translationError}
-                <button className="btn btn-sm btn-outline-danger ms-2" onClick={() => setTranslationError('')}>
-                  Dismiss
-                </button>
-              </div>
-            )}
-            
-            <div className="d-flex justify-content-center gap-3">
-              <button
-                onClick={toggleEnglish}
-                className="btn btn-primary btn-lg"
-                disabled={isTranslating}
-                style={{
-                  fontWeight: 'bold',
-                  fontSize: '1.1rem',
-                  padding: '10px 20px'
-                }}
-              >
-                {isTranslating ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Translating...
-                  </>
-                ) : showEnglish ? 'Hide Translation' : 'Show Translation'}
-              </button>
-              
-              <button
-                onClick={() => {
-                  console.log('Debug info:');
-                  console.log('- Story:', story);
-                  console.log('- Show English state:', showEnglish);
-                  console.log('- English paragraphs:', englishParagraphs);
-                  console.log('- Content length:', contentParagraphs.length);
-                  console.log('- Is translating:', isTranslating);
-                  alert('Debug info logged to console. Check the browser console.');
-                }}
-                className="btn btn-warning"
-              >
-                Debug
-              </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

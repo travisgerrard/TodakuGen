@@ -763,45 +763,58 @@ const getUserStories = async (req, res) => {
         ...storyObj,
         completed: false,
         isOwner: true, // Mark that user owns this story
-        storyId: storyObj._id
+        storyId: storyObj._id,
+        isPublic: true // All stories are public
       });
     });
     
-    // Add completed stories to the map, overwriting if they exist
+    // Check read stories - add any that aren't already in the map
     completedStories.forEach(story => {
-      if (story._id) {
-        const existingStory = storyMap.get(story._id.toString());
-        storyMap.set(story._id.toString(), {
+      const storyId = story._id.toString();
+      if (storyMap.has(storyId)) {
+        // Update existing entry to mark as completed
+        const existingStory = storyMap.get(storyId);
+        storyMap.set(storyId, {
+          ...existingStory,
+          completed: true,
+          completedAt: story.completedAt
+        });
+      } else {
+        // Add new entry
+        storyMap.set(storyId, {
           ...story,
-          storyId: story._id,
-          isOwner: existingStory?.isOwner || story.user?.toString() === req.user._id.toString()
+          isOwner: false,
+          storyId: story._id
         });
       }
     });
     
-    // Convert map to array and sort by date
-    const allStories = Array.from(storyMap.values())
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    console.log(`Returning ${allStories.length} total stories for user: ${req.user.username}`);
-    
-    // If no stories, check if there are any stories in the database at all
-    if (allStories.length === 0) {
-      const totalStories = await Story.countDocuments();
-      console.log(`Total stories in database: ${totalStories}`);
+    // Check if user has upvoted any stories
+    if (user.upvotedStories && user.upvotedStories.length > 0) {
+      // Convert user's upvoted stories to a set for quick lookup
+      const upvotedStoryIds = new Set(
+        user.upvotedStories.map(id => id.toString())
+      );
       
-      if (totalStories > 0) {
-        // Check if any stories have no user
-        const unassignedStories = await Story.countDocuments({ user: { $exists: false } });
-        console.log(`Unassigned stories in database: ${unassignedStories}`);
+      // Update hasUpvoted for each story in the map
+      for (const [storyId, storyData] of storyMap.entries()) {
+        storyMap.set(storyId, {
+          ...storyData,
+          hasUpvoted: upvotedStoryIds.has(storyId)
+        });
       }
     }
     
-    return res.json(allStories);
+    // Convert map to array for response
+    const allStories = Array.from(storyMap.values());
+    
+    console.log(`Returning ${allStories.length} total stories for user: ${req.user.username}`);
+    
+    res.json(allStories);
   } catch (error) {
     console.error('Error in getUserStories:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get user stories',
+    res.status(500).json({
+      message: 'Failed to retrieve stories',
       error: error.message
     });
   }

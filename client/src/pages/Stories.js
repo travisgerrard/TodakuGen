@@ -4,7 +4,7 @@ import { useStory } from '../context/StoryContext';
 
 const Stories = () => {
   const navigate = useNavigate();
-  const { getUserStories, toggleStoryVisibility, isLoading, error } = useStory();
+  const { getUserStories, upvoteStory, isLoading, error } = useStory();
   const [stories, setStories] = useState([]);
   const [filter, setFilter] = useState('all');  // 'all', 'completed', 'inProgress'
   const [sortBy, setSortBy] = useState('newest'); // 'newest', 'oldest', 'level', 'popular'
@@ -23,17 +23,26 @@ const Stories = () => {
     fetchStories();
   }, [getUserStories, reloadKey]);
 
-  const handleToggleVisibility = async (storyId) => {
-    const result = await toggleStoryVisibility(storyId);
-    if (result) {
-      // Update the story in the local state
-      setStories(prevStories =>
-        prevStories.map(story =>
-          story._id === storyId
-            ? { ...story, isPublic: result.isPublic }
-            : story
-        )
-      );
+  const handleUpvote = async (storyId) => {
+    try {
+      console.log('Upvoting story:', storyId);
+      const result = await upvoteStory(storyId);
+      
+      if (result) {
+        setStories(prevStories =>
+          prevStories.map(story =>
+            story._id === storyId
+              ? { 
+                  ...story, 
+                  upvoteCount: result.upvoteCount,
+                  hasUpvoted: result.hasUpvoted
+                }
+              : story
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Error upvoting story:', err);
     }
   };
 
@@ -159,15 +168,13 @@ const Stories = () => {
                 <div className="card-body d-flex flex-column">
                   <div className="d-flex justify-content-between align-items-start">
                     <h3 className="story-title">{story.title}</h3>
-                    {story.isOwner && (
-                      <button 
-                        className="btn btn-sm btn-outline-secondary visibility-toggle"
-                        onClick={() => handleToggleVisibility(story._id)}
-                        title={story.isPublic ? "Make Private" : "Make Public"}
-                      >
-                        <i className={`bi bi-${story.isPublic ? 'globe' : 'lock'}`}></i>
-                      </button>
-                    )}
+                    <button 
+                      className={`btn btn-sm ${story.hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => handleUpvote(story._id)}
+                    >
+                      <i className={`bi bi-hand-thumbs-up${story.hasUpvoted ? '-fill' : ''} me-1`}></i>
+                      {story.upvoteCount || 0}
+                    </button>
                   </div>
 
                   <div className="story-meta">
@@ -177,22 +184,6 @@ const Stories = () => {
                     {story.completed && (
                       <span className="text-success">
                         <i className="bi bi-check-circle-fill me-2"></i>Completed
-                      </span>
-                    )}
-                    <span className="text-primary">
-                      <i className="bi bi-hand-thumbs-up-fill me-2"></i>
-                      {story.upvoteCount || 0} {story.upvoteCount === 1 ? 'upvote' : 'upvotes'}
-                    </span>
-                    {story.isPublic && (
-                      <span className="text-info">
-                        <i className="bi bi-globe me-2"></i>
-                        Public
-                      </span>
-                    )}
-                    {!story.isPublic && (
-                      <span className="text-muted">
-                        <i className="bi bi-lock me-2"></i>
-                        Private
                       </span>
                     )}
                   </div>

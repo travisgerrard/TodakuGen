@@ -141,7 +141,17 @@ const CommunityStories = () => {
             {filteredStories().map((story) => (
               <div key={story._id} className="story-card card">
                 <div className="card-body d-flex flex-column">
-                  <h3 className="story-title">{story.title}</h3>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <h3 className="story-title">{story.title}</h3>
+                    <button 
+                      className={`btn btn-sm ${story.hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => handleUpvote(story._id)}
+                    >
+                      <i className={`bi bi-hand-thumbs-up${story.hasUpvoted ? '-fill' : ''} me-1`}></i>
+                      {story.upvoteCount}
+                    </button>
+                  </div>
+                  
                   <div className="story-meta">
                     <span>
                       <i className="bi bi-person me-2"></i>
@@ -167,21 +177,11 @@ const CommunityStories = () => {
                     )}
                   </div>
                   
-                  <div className="d-flex justify-content-between align-items-center mt-3 mb-3">
-                    <button 
-                      className={`btn btn-sm ${story.hasUpvoted ? 'btn-primary' : 'btn-outline-primary'}`}
-                      onClick={() => handleUpvote(story._id)}
-                    >
-                      <i className={`bi bi-hand-thumbs-up${story.hasUpvoted ? '-fill' : ''} me-1`}></i>
-                      {story.upvoteCount} {story.upvoteCount === 1 ? 'upvote' : 'upvotes'}
-                    </button>
-                    
-                    <div className="story-level-badge">
-                      <span className="story-tag">
-                        <i className="bi bi-bar-chart-fill me-1"></i>
-                        Kanji Level {story.kanjiLevel}
-                      </span>
-                    </div>
+                  <div className="story-level-badge mt-3">
+                    <span className="story-tag">
+                      <i className="bi bi-bar-chart-fill me-1"></i>
+                      Kanji Level {story.kanjiLevel}
+                    </span>
                   </div>
                   
                   <div className="story-actions mt-auto">

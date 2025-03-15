@@ -1,8 +1,6 @@
 const { OpenAI } = require('openai');
-const Story = require('../models/Story');
-const User = require('../models/User');
-const Vocabulary = require('../models/Vocabulary');
-const Grammar = require('../models/Grammar');
+const { Story, User, Vocabulary, Grammar } = require('../models');
+const { Op } = require('sequelize');
 const path = require('path');
 const fs = require('fs');
 
@@ -66,14 +64,14 @@ Next weekend, they plan to go to the movie theater. Yamada-san is very happy to 
 // @access  Private
 const generateStory = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user.id);
     
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
     
-    console.log(`Generating story for user: ${user._id} (${user.username})`);
+    console.log(`Generating story for user: ${user.id} (${user.username})`);
     
     // Extract parameters from query, defaulting to user preferences
     const { 
@@ -154,25 +152,22 @@ ${japaneseText}`;
       const content = lines.slice(1).join('\n').trim();
 
       // Create and save the new story
-      const story = new Story({
+      const story = await Story.create({
         title,
         content,
         englishContent,
-        user: req.user._id,
+        userId: req.user.id,
         kanjiLevel: parseInt(waniKaniLevel, 10),
         grammarLevel: parseInt(genkiChapter, 10),
         length,
         topic,
-        vocabulary: [], // This would be filled by analyzing the content
-        grammarPoints: [], // This would be filled by analyzing the content
       });
 
-      await story.save();
-      console.log(`Story created with ID: ${story._id} for user: ${user.username}`);
+      console.log(`Story created with ID: ${story.id} for user: ${user.username}`);
       console.log(`English content saved: ${story.englishContent ? 'Yes' : 'No'} (${story.englishContent?.length || 0} chars)`);
 
       res.json({
-        storyId: story._id,
+        storyId: story.id,
         title: story.title,
         content: story.content,
         englishContent: story.englishContent,
@@ -191,24 +186,21 @@ ${japaneseText}`;
       const fallbackStory = fallbackStories.find(s => s.length === length) || fallbackStories[0];
       
       // Create and save the fallback story
-      const story = new Story({
+      const story = await Story.create({
         title: fallbackStory.title,
         content: fallbackStory.content,
         englishContent: fallbackStory.englishContent,
-        user: req.user._id,
+        userId: req.user.id,
         kanjiLevel: parseInt(waniKaniLevel, 10),
         grammarLevel: parseInt(genkiChapter, 10),
         length,
         topic,
-        vocabulary: [],
-        grammarPoints: [],
       });
 
-      await story.save();
-      console.log(`Fallback story created with ID: ${story._id} for user: ${user.username}`);
+      console.log(`Fallback story created with ID: ${story.id} for user: ${user.username}`);
 
       res.json({
-        storyId: story._id,
+        storyId: story.id,
         title: story.title,
         content: story.content,
         englishContent: story.englishContent,
@@ -232,7 +224,15 @@ ${japaneseText}`;
 // @access  Private
 const getStoryById = async (req, res) => {
   try {
-    const story = await Story.findById(req.params.id);
+    const story = await Story.findByPk(req.params.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username']
+        }
+      ]
+    });
     
     if (!story) {
       res.status(404);
@@ -242,15 +242,22 @@ const getStoryById = async (req, res) => {
     // Check if the user has upvoted this story
     let hasUpvoted = false;
     if (req.user) {
-      const user = await User.findById(req.user._id);
-      if (user && user.upvotedStories) {
-        hasUpvoted = user.upvotedStories.some(id => id.toString() === story._id.toString());
-      }
+      // Get the join table model
+      const UserUpvotedStories = req.app.get('sequelize').model('UserUpvotedStories');
+      
+      // Check if the upvote relationship exists
+      const upvote = await UserUpvotedStories.findOne({
+        where: {
+          userId: req.user.id,
+          storyId: story.id
+        }
+      });
+      
+      hasUpvoted = !!upvote;
     }
     
-    // Format response consistently with generateStory endpoint
     res.json({
-      storyId: story._id,
+      storyId: story.id,
       title: story.title,
       content: story.content,
       englishContent: story.englishContent || '',
@@ -276,27 +283,34 @@ const getStoryById = async (req, res) => {
 // @access  Private
 const markStoryAsComplete = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const userId = req.user.id;
     const storyId = req.params.id;
     
     // Check if story exists
-    const story = await Story.findById(storyId);
+    const story = await Story.findByPk(storyId);
     if (!story) {
       res.status(404);
       throw new Error('Story not found');
     }
     
-    // Add to user's readStories if not already there
-    const alreadyRead = user.readStories.some(
-      (s) => s.storyId.toString() === storyId
-    );
+    // Get the join table model
+    const UserReadStories = req.app.get('sequelize').model('UserReadStories');
     
-    if (!alreadyRead) {
-      user.readStories.push({
+    // Check if the user has already read this story
+    const readRecord = await UserReadStories.findOne({
+      where: {
+        userId,
+        storyId
+      }
+    });
+    
+    // If not already read, create the record
+    if (!readRecord) {
+      await UserReadStories.create({
+        userId,
         storyId,
         completedAt: new Date()
       });
-      await user.save();
     }
     
     res.json({ success: true, message: 'Story marked as completed' });
@@ -308,7 +322,7 @@ const markStoryAsComplete = async (req, res) => {
   }
 };
 
-// @desc    Analyze story content for vocabulary and grammar
+// @desc    Analyze story content to extract vocabulary and grammar
 // @access  Private (internal function)
 const analyzeStoryContent = async (story, user) => {
   try {
@@ -317,7 +331,7 @@ const analyzeStoryContent = async (story, user) => {
       return null;
     }
 
-    console.log(`Analyzing story content for ID: ${story._id}`);
+    console.log(`Analyzing story content for ID: ${story.id}`);
 
     // Construct prompt for GPT-4o
     const prompt = `
@@ -390,7 +404,7 @@ const analyzeStoryContent = async (story, user) => {
     const rawContent = response.choices[0].message.content;
     
     // Log the raw response for debugging
-    console.log(`Raw GPT-4o response for story ${story._id}:`);
+    console.log(`Raw GPT-4o response for story ${story.id}:`);
     console.log(rawContent);
     
     // Create a file with the raw response for future reference
@@ -398,7 +412,7 @@ const analyzeStoryContent = async (story, user) => {
     if (!fs.existsSync(responseLogDir)) {
       fs.mkdirSync(responseLogDir, { recursive: true });
     }
-    const logFileName = path.join(responseLogDir, `story-analysis-${story._id}-${Date.now()}.json`);
+    const logFileName = path.join(responseLogDir, `story-analysis-${story.id}-${Date.now()}.json`);
     fs.writeFileSync(logFileName, rawContent);
     console.log(`Logged raw response to: ${logFileName}`);
 
@@ -450,71 +464,85 @@ const analyzeStoryContent = async (story, user) => {
 // @access  Private (internal function)
 const saveVocabularyToDatabase = async (vocabularyItems, storyId) => {
   try {
-    const story = await Story.findById(storyId);
+    const story = await Story.findByPk(storyId);
     if (!story) {
       console.error(`Story not found with ID: ${storyId}`);
       return [];
     }
 
-    // Clear existing vocabulary
-    story.vocabulary = [];
+    // Get the models from the sequelize instance
+    const sequelize = Story.sequelize;
+    const Vocabulary = sequelize.model('Vocabulary');
+    const StoryVocabulary = sequelize.model('StoryVocabulary');
+    
+    // Clear existing vocabulary for this story
+    await StoryVocabulary.destroy({
+      where: { storyId }
+    });
 
     // Process and save each vocabulary item
     const savedItems = [];
     for (const item of vocabularyItems) {
       // Check if vocab already exists in database
       let vocabDoc = await Vocabulary.findOne({ 
-        word: item.word,
-        reading: item.reading
+        where: {
+          word: item.word,
+          reading: item.reading
+        }
       });
 
       // If not found, create a new vocabulary entry
       if (!vocabDoc) {
-        vocabDoc = new Vocabulary({
+        vocabDoc = await Vocabulary.create({
           word: item.word,
           reading: item.reading,
           meaning: item.meaning,
           kanjiLevel: story.kanjiLevel,
-          exampleSentences: item.examples || [],
+          exampleSentences: JSON.stringify(item.examples || []),
           notes: item.notes || ''
         });
-        await vocabDoc.save();
       } else {
         // Update existing vocabulary with any new example sentences
         if (item.examples && item.examples.length > 0) {
-          const existingExamples = vocabDoc.exampleSentences.map(ex => ex.sentence);
+          let existingExamples = [];
+          try {
+            existingExamples = JSON.parse(vocabDoc.exampleSentences || '[]');
+          } catch (e) {
+            console.error('Error parsing existing examples:', e);
+            existingExamples = [];
+          }
+          
+          const existingSentences = existingExamples.map(ex => ex.sentence);
           
           for (const example of item.examples) {
-            if (!existingExamples.includes(example.sentence)) {
-              vocabDoc.exampleSentences.push(example);
+            if (!existingSentences.includes(example.sentence)) {
+              existingExamples.push(example);
             }
           }
           
           // Add notes if they exist and are new
+          const updatedFields = {
+            exampleSentences: JSON.stringify(existingExamples)
+          };
+          
           if (item.notes && (!vocabDoc.notes || vocabDoc.notes !== item.notes)) {
-            vocabDoc.notes = item.notes;
+            updatedFields.notes = item.notes;
           }
           
-          await vocabDoc.save();
+          await vocabDoc.update(updatedFields);
         }
       }
 
-      // Add to story's vocabulary array
-      story.vocabulary.push({
-        wordId: vocabDoc._id,
+      // Create association between story and vocabulary
+      await StoryVocabulary.create({
+        storyId,
+        vocabularyId: vocabDoc.id,
         frequency: 1
       });
-
-      // Add story reference to vocabulary document if not already there
-      if (!vocabDoc.stories.includes(storyId)) {
-        vocabDoc.stories.push(storyId);
-        await vocabDoc.save();
-      }
 
       savedItems.push(vocabDoc);
     }
 
-    await story.save();
     return savedItems;
   } catch (error) {
     console.error('Error saving vocabulary to database:', error);
@@ -526,75 +554,91 @@ const saveVocabularyToDatabase = async (vocabularyItems, storyId) => {
 // @access  Private (internal function)
 const saveGrammarToDatabase = async (grammarPoints, storyId) => {
   try {
-    const story = await Story.findById(storyId);
+    const story = await Story.findByPk(storyId);
     if (!story) {
       console.error(`Story not found with ID: ${storyId}`);
       return [];
     }
 
-    // Clear existing grammar points
-    story.grammarPoints = [];
+    // Get the models from the sequelize instance
+    const sequelize = Story.sequelize;
+    const Grammar = sequelize.model('Grammar');
+    const StoryGrammar = sequelize.model('StoryGrammar');
+    
+    // Clear existing grammar points for this story
+    await StoryGrammar.destroy({
+      where: { storyId }
+    });
 
     // Process and save each grammar point
     const savedItems = [];
     for (const item of grammarPoints) {
       // Check if grammar point already exists in database
       let grammarDoc = await Grammar.findOne({ 
-        rule: item.rule
+        where: { rule: item.rule }
       });
 
       // If not found, create a new grammar entry
       if (!grammarDoc) {
-        grammarDoc = new Grammar({
+        grammarDoc = await Grammar.create({
           rule: item.rule,
           genkiChapter: story.grammarLevel,
           explanation: item.explanation,
-          examples: item.examples || [],
+          examples: JSON.stringify(item.examples || []),
           commonMistakes: item.commonMistakes || '',
           similarPatterns: item.similarPatterns || ''
         });
-        await grammarDoc.save();
       } else {
         // Update existing grammar with any new information
+        const updatedFields = {};
+        
         if (item.explanation && grammarDoc.explanation !== item.explanation) {
-          grammarDoc.explanation = item.explanation;
+          updatedFields.explanation = item.explanation;
         }
         
         if (item.examples && item.examples.length > 0) {
-          const existingExamples = grammarDoc.examples.map(ex => ex.sentence);
+          let existingExamples = [];
+          try {
+            existingExamples = JSON.parse(grammarDoc.examples || '[]');
+          } catch (e) {
+            console.error('Error parsing existing examples:', e);
+            existingExamples = [];
+          }
+          
+          const existingSentences = existingExamples.map(ex => ex.sentence);
           
           for (const example of item.examples) {
-            if (!existingExamples.includes(example.sentence)) {
-              grammarDoc.examples.push(example);
+            if (!existingSentences.includes(example.sentence)) {
+              existingExamples.push(example);
             }
           }
+          
+          updatedFields.examples = JSON.stringify(existingExamples);
         }
         
         // Add other information if it exists and is new
         if (item.commonMistakes) {
-          grammarDoc.commonMistakes = item.commonMistakes;
+          updatedFields.commonMistakes = item.commonMistakes;
         }
         
         if (item.similarPatterns) {
-          grammarDoc.similarPatterns = item.similarPatterns;
+          updatedFields.similarPatterns = item.similarPatterns;
         }
         
-        await grammarDoc.save();
+        if (Object.keys(updatedFields).length > 0) {
+          await grammarDoc.update(updatedFields);
+        }
       }
 
-      // Add to story's grammar points array
-      story.grammarPoints.push(grammarDoc._id);
-
-      // Add story reference to grammar document if not already there
-      if (!grammarDoc.stories.includes(storyId)) {
-        grammarDoc.stories.push(storyId);
-        await grammarDoc.save();
-      }
+      // Create association between story and grammar
+      await StoryGrammar.create({
+        storyId,
+        grammarId: grammarDoc.id
+      });
 
       savedItems.push(grammarDoc);
     }
 
-    await story.save();
     return savedItems;
   } catch (error) {
     console.error('Error saving grammar points to database:', error);
@@ -602,7 +646,7 @@ const saveGrammarToDatabase = async (grammarPoints, storyId) => {
   }
 };
 
-// @desc    Get grammar/vocab breakdown for a story
+// @desc    Get vocabulary and grammar review for a story
 // @route   GET /api/stories/:id/review
 // @access  Private
 const getStoryReview = async (req, res) => {
@@ -614,7 +658,7 @@ const getStoryReview = async (req, res) => {
     }
 
     console.log(`Fetching review data for story ID: ${req.params.id}`);
-    const story = await Story.findById(req.params.id);
+    const story = await Story.findByPk(req.params.id);
     
     if (!story) {
       console.log(`Story with ID ${req.params.id} not found`);
@@ -623,20 +667,40 @@ const getStoryReview = async (req, res) => {
       });
     }
     
-    // Check if the story already has vocabulary and grammar points
-    const hasVocabulary = story.vocabulary && story.vocabulary.length > 0;
-    const hasGrammarPoints = story.grammarPoints && story.grammarPoints.length > 0;
+    // Get vocabulary items for this story
+    const Vocabulary = req.app.get('sequelize').model('Vocabulary');
+    const StoryVocabulary = req.app.get('sequelize').model('StoryVocabulary');
     
-    console.log(`Story ${req.params.id} status - hasVocabulary: ${hasVocabulary} (${story.vocabulary?.length || 0} items), hasGrammarPoints: ${hasGrammarPoints} (${story.grammarPoints?.length || 0} items)`);
+    const vocabularyItems = await StoryVocabulary.findAll({
+      where: { storyId: req.params.id },
+      include: [{
+        model: Vocabulary,
+        as: 'word'
+      }]
+    });
+    
+    // Get grammar points for this story
+    const Grammar = req.app.get('sequelize').model('Grammar');
+    const StoryGrammar = req.app.get('sequelize').model('StoryGrammar');
+    
+    const grammarPoints = await StoryGrammar.findAll({
+      where: { storyId: req.params.id },
+      include: [{
+        model: Grammar,
+        as: 'grammar'
+      }]
+    });
+    
+    console.log(`Story ${req.params.id} status - hasVocabulary: ${vocabularyItems.length > 0} (${vocabularyItems.length} items), hasGrammarPoints: ${grammarPoints.length > 0} (${grammarPoints.length} items)`);
     
     // If missing vocabulary or grammar points, analyze the story content
-    if (!hasVocabulary || !hasGrammarPoints) {
-      console.log(`Story ${req.params.id} needs analysis - vocab: ${hasVocabulary}, grammar: ${hasGrammarPoints}`);
+    if (vocabularyItems.length === 0 || grammarPoints.length === 0) {
+      console.log(`Story ${req.params.id} needs analysis - vocab: ${vocabularyItems.length > 0}, grammar: ${grammarPoints.length > 0}`);
       
       // Get user for context
-      const user = await User.findById(req.user._id);
+      const user = await User.findByPk(req.user.id);
       if (!user) {
-        console.error(`User with ID ${req.user._id} not found when trying to analyze story`);
+        console.error(`User with ID ${req.user.id} not found when trying to analyze story`);
         return res.status(404).json({
           message: 'User not found',
         });
@@ -649,56 +713,58 @@ const getStoryReview = async (req, res) => {
         console.log(`Analysis complete for story ${req.params.id} - received vocabulary: ${analysis.vocabulary?.length || 0}, grammar: ${analysis.grammarPoints?.length || 0}`);
         
         // Save vocabulary and grammar points to database
-        if (!hasVocabulary && analysis.vocabulary) {
+        if (vocabularyItems.length === 0 && analysis.vocabulary) {
           console.log(`Saving ${analysis.vocabulary.length} vocabulary items to database for story ${req.params.id}`);
-          const savedVocab = await saveVocabularyToDatabase(analysis.vocabulary, story._id);
+          const savedVocab = await saveVocabularyToDatabase(analysis.vocabulary, req.params.id);
           console.log(`Saved ${savedVocab.length} vocabulary items successfully`);
         }
         
-        if (!hasGrammarPoints && analysis.grammarPoints) {
+        if (grammarPoints.length === 0 && analysis.grammarPoints) {
           console.log(`Saving ${analysis.grammarPoints.length} grammar points to database for story ${req.params.id}`);
-          const savedGrammar = await saveGrammarToDatabase(analysis.grammarPoints, story._id);
+          const savedGrammar = await saveGrammarToDatabase(analysis.grammarPoints, req.params.id);
           console.log(`Saved ${savedGrammar.length} grammar points successfully`);
         }
       } else {
         console.log(`No analysis results returned for story ${req.params.id}`);
       }
-    }
-    
-    // Always reload the story with populated data to ensure we have the latest
-    const populatedStory = await Story.findById(req.params.id)
-      .populate('vocabulary.wordId')
-      .populate('grammarPoints');
       
-    if (!populatedStory) {
-      console.error(`Failed to reload story ${req.params.id} after analysis`);
-      return res.status(500).json({
-        message: 'Error retrieving story data after analysis',
+      // Reload vocabulary and grammar after analysis
+      const updatedVocabularyItems = await StoryVocabulary.findAll({
+        where: { storyId: req.params.id },
+        include: [{
+          model: Vocabulary,
+          as: 'word'
+        }]
       });
+      
+      const updatedGrammarPoints = await StoryGrammar.findAll({
+        where: { storyId: req.params.id },
+        include: [{
+          model: Grammar,
+          as: 'grammar'
+        }]
+      });
+      
+      // Transform the data for API response
+      const response = {
+        vocabulary: updatedVocabularyItems.map(item => ({
+          ...item.toJSON(),
+          wordId: item.word
+        })),
+        grammarPoints: updatedGrammarPoints.map(item => item.grammar)
+      };
+      
+      console.log(`Returning review data with ${response.vocabulary.length} vocab items and ${response.grammarPoints.length} grammar points`);
+      return res.json(response);
     }
     
-    // Transform the data for API response
-    const vocabularyItems = populatedStory.vocabulary || [];
-    const grammarPoints = populatedStory.grammarPoints || [];
-    
-    console.log(`Transformed data for response - vocabulary: ${vocabularyItems.length}, grammar: ${grammarPoints.length}`);
-    
-    // Check if we have valid nested data
-    const validVocab = vocabularyItems.filter(item => item && item.wordId);
-    const validGrammar = grammarPoints.filter(item => item);
-    
-    if (validVocab.length !== vocabularyItems.length) {
-      console.warn(`Some vocabulary items (${vocabularyItems.length - validVocab.length}) are invalid or missing wordId reference`);
-    }
-    
-    if (validGrammar.length !== grammarPoints.length) {
-      console.warn(`Some grammar points (${grammarPoints.length - validGrammar.length}) are invalid`);
-    }
-    
-    // Return valid data
+    // Transform the data for API response if we didn't need to analyze
     const response = {
-      vocabulary: validVocab,
-      grammarPoints: validGrammar,
+      vocabulary: vocabularyItems.map(item => ({
+        ...item.toJSON(),
+        wordId: item.word
+      })),
+      grammarPoints: grammarPoints.map(item => item.grammar)
     };
     
     console.log(`Returning review data with ${response.vocabulary.length} vocab items and ${response.grammarPoints.length} grammar points`);
@@ -712,98 +778,85 @@ const getStoryReview = async (req, res) => {
   }
 };
 
-// @desc    Get all user stories
-// @route   GET /api/stories
+// @desc    Get all stories for the current user
+// @route   GET /api/stories/me
 // @access  Private
 const getUserStories = async (req, res) => {
   try {
-    console.log(`Getting stories for user: ${req.user._id} (${req.user.username})`);
+    console.log(`Getting stories for user: ${req.user.id} (${req.user.username})`);
     
-    // Find all stories associated with this user
-    const user = await User.findById(req.user._id)
-      .populate({
-        path: 'readStories.storyId',
-        select: 'title content kanjiLevel grammarLevel length topic createdAt'
-      });
-    
-    if (!user) {
-      console.log('User not found');
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    // Get all stories created by this user
-    const userStories = await Story.find({ user: req.user._id })
-      .sort({ createdAt: -1 })
-      .select('title content kanjiLevel grammarLevel length topic createdAt upvoteCount');
+    // Find all stories created by this user
+    const userCreatedStories = await Story.findAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 'length', 'topic', 'createdAt', 'upvoteCount']
+    });
       
-    console.log(`Found ${userStories.length} stories created by user: ${req.user.username}`);
+    console.log(`Found ${userCreatedStories.length} stories created by user: ${req.user.username}`);
     
-    // Get completed stories from user.readStories
-    const completedStories = user.readStories
-      .filter(item => item.storyId)
-      .map(item => {
-        const storyData = item.storyId.toObject();
-        return {
-          ...storyData,
-          completed: true,
-          completedAt: item.completedAt
-        };
-      });
-      
-    console.log(`Found ${completedStories.length} completed stories for user: ${req.user.username}`);
+    // Find completed stories (stories that the user has read)
+    const completedStoriesData = await Story.findAll({
+      include: [{
+        model: User,
+        as: 'readBy',
+        where: { id: req.user.id },
+        attributes: [],
+        through: { attributes: ['completedAt'] }
+      }],
+      attributes: ['id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 'length', 'topic', 'createdAt', 'upvoteCount']
+    });
+    
+    console.log(`Found ${completedStoriesData.length} completed stories for user: ${req.user.username}`);
+    
+    // Find upvoted stories
+    const upvotedStoryIds = await req.app.get('sequelize').model('UserUpvotedStories').findAll({
+      where: { userId: req.user.id },
+      attributes: ['storyId']
+    }).then(records => records.map(record => record.storyId));
     
     // Combine all stories, mark which ones are completed, and sort by date
     // Create a map of story IDs to avoid duplicates
     const storyMap = new Map();
     
     // Add user created stories to the map
-    userStories.forEach(story => {
-      const storyObj = story.toObject();
-      storyMap.set(storyObj._id.toString(), {
+    userCreatedStories.forEach(story => {
+      const storyObj = story.toJSON();
+      storyMap.set(storyObj.id.toString(), {
         ...storyObj,
         completed: false,
         isOwner: true, // Mark that user owns this story
-        storyId: storyObj._id,
-        isPublic: true // All stories are public
+        storyId: storyObj.id,
+        isPublic: true, // All stories are public
+        hasUpvoted: upvotedStoryIds.includes(storyObj.id)
       });
     });
     
-    // Check read stories - add any that aren't already in the map
-    completedStories.forEach(story => {
-      const storyId = story._id.toString();
+    // Add completed stories to the map
+    completedStoriesData.forEach(story => {
+      const storyObj = story.toJSON();
+      const storyId = storyObj.id.toString();
+      const completedAt = story.readBy[0]?.UserReadStories?.completedAt;
+      
       if (storyMap.has(storyId)) {
         // Update existing entry to mark as completed
         const existingStory = storyMap.get(storyId);
         storyMap.set(storyId, {
           ...existingStory,
           completed: true,
-          completedAt: story.completedAt
+          completedAt
         });
       } else {
         // Add new entry
         storyMap.set(storyId, {
-          ...story,
+          ...storyObj,
           isOwner: false,
-          storyId: story._id
+          storyId: storyObj.id,
+          completed: true,
+          completedAt,
+          hasUpvoted: upvotedStoryIds.includes(storyObj.id)
         });
       }
     });
-    
-    // Check if user has upvoted any stories
-    if (user.upvotedStories && user.upvotedStories.length > 0) {
-      // Convert user's upvoted stories to a set for quick lookup
-      const upvotedStoryIds = new Set(
-        user.upvotedStories.map(id => id.toString())
-      );
-      
-      // Update hasUpvoted for each story in the map
-      for (const [storyId, storyData] of storyMap.entries()) {
-        storyMap.set(storyId, {
-          ...storyData,
-          hasUpvoted: upvotedStoryIds.has(storyId)
-        });
-      }
-    }
     
     // Convert map to array for response
     const allStories = Array.from(storyMap.values());
@@ -814,22 +867,22 @@ const getUserStories = async (req, res) => {
   } catch (error) {
     console.error('Error in getUserStories:', error);
     res.status(500).json({
-      message: 'Failed to retrieve stories',
+      message: 'Failed to get user stories',
       error: error.message
     });
   }
 };
 
-// @desc    Translate a story to English if it doesn't have a translation
+// @desc    Translate a story to English
 // @route   POST /api/stories/:id/translate
 // @access  Private
 const translateStory = async (req, res) => {
   console.log('========== TRANSLATION REQUEST ==========');
   console.log(`Translation request for story ID: ${req.params.id}`);
-  console.log(`User: ${req.user?._id} (${req.user?.name || 'unknown'})`);
+  console.log(`User: ${req.user?.id} (${req.user?.username || 'unknown'})`);
   
   try {
-    const story = await Story.findById(req.params.id);
+    const story = await Story.findByPk(req.params.id);
     
     if (!story) {
       console.log(`ERROR: Story not found with ID: ${req.params.id}`);
@@ -869,8 +922,7 @@ ${story.content}`;
       console.log(`First 100 chars: ${englishContent.substring(0, 100)}...`);
       
       // Save the translation to the story
-      story.englishContent = englishContent;
-      await story.save();
+      await story.update({ englishContent });
       console.log(`Translation saved to story in database`);
       
       return res.json({
@@ -895,58 +947,55 @@ ${story.content}`;
   }
 };
 
-// @desc    Get community stories (all public stories)
+// @desc    Get community stories (public stories from other users)
 // @route   GET /api/stories/community
 // @access  Private
 const getCommunityStories = async (req, res) => {
   try {
     console.log(`Getting community stories, requested by user: ${req.user.username}`);
     
-    // Find the user to get their upvoted and read stories
-    const user = await User.findById(req.user._id)
-      .populate({
-        path: 'readStories.storyId',
-        select: '_id'
-      })
-      .populate({
-        path: 'upvotedStories',
-        select: '_id'
-      });
+    // Find stories the user has read
+    const readStories = await req.app.get('sequelize').model('UserReadStories').findAll({
+      where: { userId: req.user.id },
+      attributes: ['storyId']
+    });
+    const readStoryIds = readStories.map(record => record.storyId);
     
-    if (!user) {
-      console.log('User not found');
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    // Get IDs of stories the user has upvoted and read
-    const upvotedStoryIds = user.upvotedStories.map(story => story._id.toString());
-    const readStoryIds = user.readStories
-      .filter(item => item.storyId)
-      .map(item => item.storyId._id.toString());
+    // Find stories the user has upvoted
+    const upvotedStories = await req.app.get('sequelize').model('UserUpvotedStories').findAll({
+      where: { userId: req.user.id },
+      attributes: ['storyId']
+    });
+    const upvotedStoryIds = upvotedStories.map(record => record.storyId);
     
     // Query for public stories, excluding the user's own stories
-    const publicStories = await Story.find({ 
-      isPublic: true, 
-      user: { $ne: req.user._id } // Exclude user's own stories
-    })
-    .sort({ upvoteCount: -1, createdAt: -1 }) // Sort by upvotes (desc) then creation date (desc)
-    .populate({
-      path: 'user',
-      select: 'username'
-    })
-    .select('title content kanjiLevel grammarLevel length topic createdAt upvoteCount user');
+    const publicStories = await Story.findAll({ 
+      where: { 
+        userId: { [Op.ne]: req.user.id } // Exclude user's own stories
+      },
+      order: [
+        ['upvoteCount', 'DESC'], 
+        ['createdAt', 'DESC']
+      ],
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['username']
+      }],
+      attributes: ['id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 'length', 'topic', 'createdAt', 'upvoteCount', 'userId']
+    });
     
     console.log(`Found ${publicStories.length} public stories from the community`);
     
     // Map the stories and add user-specific flags
     const communityStories = publicStories.map(story => {
-      const storyObj = story.toObject();
+      const storyObj = story.toJSON();
       return {
         ...storyObj,
         isOwner: false,
-        hasUpvoted: upvotedStoryIds.includes(storyObj._id.toString()),
-        completed: readStoryIds.includes(storyObj._id.toString()),
-        username: storyObj.user?.username || 'Anonymous'
+        hasUpvoted: upvotedStoryIds.includes(storyObj.id),
+        completed: readStoryIds.includes(storyObj.id),
+        username: storyObj.author?.username || 'Anonymous'
       };
     });
     
@@ -966,64 +1015,61 @@ const getCommunityStories = async (req, res) => {
 const upvoteStory = async (req, res) => {
   try {
     const storyId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user.id;
     
     console.log(`User ${req.user.username} is upvoting story ${storyId}`);
     
     // Find the story
-    const story = await Story.findById(storyId);
+    const story = await Story.findByPk(storyId);
     if (!story) {
       return res.status(404).json({ message: 'Story not found' });
     }
     
-    // Removed the restriction for upvoting own stories
-    // Users can now upvote their own stories
-    
-    // Find the user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    // Get the join table model
+    const UserUpvotedStories = req.app.get('sequelize').model('UserUpvotedStories');
     
     // Check if user has already upvoted this story
-    const alreadyUpvoted = story.upvotes.some(upvoteId => upvoteId.toString() === userId.toString());
-    const userUpvotedIndex = user.upvotedStories.findIndex(id => id.toString() === storyId);
+    const upvote = await UserUpvotedStories.findOne({
+      where: {
+        userId,
+        storyId
+      }
+    });
     
     let message;
+    let hasUpvoted;
     
-    if (alreadyUpvoted) {
+    if (upvote) {
       // User has already upvoted, so remove the upvote
-      story.upvotes = story.upvotes.filter(id => id.toString() !== userId.toString());
-      story.upvoteCount = Math.max(0, story.upvoteCount - 1);
+      await upvote.destroy();
       
-      // Remove from user's upvoted stories
-      if (userUpvotedIndex !== -1) {
-        user.upvotedStories.splice(userUpvotedIndex, 1);
-      }
+      // Decrease the upvote count
+      await story.decrement('upvoteCount');
+      await story.reload();
       
       message = 'Upvote removed';
+      hasUpvoted = false;
       console.log(`User ${req.user.username} removed upvote from story ${storyId}`);
     } else {
       // User hasn't upvoted, so add the upvote
-      story.upvotes.push(userId);
-      story.upvoteCount += 1;
+      await UserUpvotedStories.create({
+        userId,
+        storyId
+      });
       
-      // Add to user's upvoted stories
-      if (userUpvotedIndex === -1) {
-        user.upvotedStories.push(storyId);
-      }
+      // Increase the upvote count
+      await story.increment('upvoteCount');
+      await story.reload();
       
       message = 'Story upvoted';
+      hasUpvoted = true;
       console.log(`User ${req.user.username} added upvote to story ${storyId}`);
     }
-    
-    // Save both story and user
-    await Promise.all([story.save(), user.save()]);
     
     return res.json({ 
       message, 
       upvoteCount: story.upvoteCount,
-      hasUpvoted: !alreadyUpvoted
+      hasUpvoted
     });
   } catch (error) {
     console.error('Error in upvoteStory:', error);
@@ -1034,25 +1080,24 @@ const upvoteStory = async (req, res) => {
   }
 };
 
-// @desc    Toggle a story's public/private visibility
+// @desc    Toggle a story's visibility
 // @route   PUT /api/stories/:id/toggle-visibility
 // @access  Private
 const toggleStoryVisibility = async (req, res) => {
   try {
-    const story = await Story.findById(req.params.id);
+    const story = await Story.findByPk(req.params.id);
     
     if (!story) {
       return res.status(404).json({ message: 'Story not found' });
     }
     
     // Check if the user is the owner of the story
-    if (story.user.toString() !== req.user._id.toString()) {
+    if (story.userId !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized to modify this story' });
     }
     
     // Always set to public
-    story.isPublic = true;
-    await story.save();
+    await story.update({ isPublic: true });
     
     return res.json({
       message: 'Story is now public',

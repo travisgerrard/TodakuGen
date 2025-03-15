@@ -95,10 +95,16 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Authentication refresh error:', error);
       
-      // If we get a 401 or 403, clear authentication
-      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      // During migration: Be more lenient with errors to prevent lockouts
+      if (error.response && 
+          (error.response.status === 401 || error.response.status === 403) && 
+          !error.response.data?.message?.includes('migration')) {
         console.log('Token is invalid or expired - clearing authentication');
         logout();
+      } else if (error.message?.includes('invalid input syntax') || 
+                 error.message?.includes('does not exist')) {
+        console.log('Database migration error detected - keeping user logged in');
+        // Don't change the user state or logout
       } else {
         setError('Authentication refresh failed');
       }
@@ -145,11 +151,29 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
           console.error('Authentication error:', error);
           
-          // If we get a 401 or 403, clear authentication
-          if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          // During migration: Be more lenient with errors to prevent lockouts
+          // Only clear authentication for specific errors, not database migration issues
+          if (error.response && 
+              (error.response.status === 401 || error.response.status === 403) && 
+              !error.response.data?.message?.includes('migration')) {
             console.log('Token is invalid - clearing authentication');
             localStorage.removeItem('token');
             setUser(null);
+          } else if (error.message?.includes('invalid input syntax') || 
+                     error.message?.includes('does not exist')) {
+            console.log('Database migration error detected - attempting to handle gracefully');
+            // Keep the token but show a minimal user object
+            setUser({
+              username: 'User', // Generic username
+              waniKaniLevel: 1,
+              genkiChapter: 1,
+              preferences: {
+                storyLength: 'medium',
+                maxKanjiLevel: 5,
+                maxGrammarLevel: 3,
+                topics: ['daily life', 'school', 'travel']
+              }
+            });
           } else {
             setError('Authentication failed');
           }

@@ -23,6 +23,9 @@ import DifficultWords from './pages/DifficultWords';
 import ThemeToggle from './components/ThemeToggle';
 import MobileNavigation from './components/MobileNavigation';
 
+// Import the MigrationNotice component
+import MigrationNotice from './components/MigrationNotice';
+
 function AppNavigation() {
   const { isAuthenticated, logout, user } = useAuth();
   const { theme } = useTheme();
@@ -92,6 +95,8 @@ function App() {
             <VocabProvider>
               <GrammarProvider>
                 <div className="app-wrapper">
+                  {/* Add the migration notice at the top */}
+                  <MigrationNotice />
                   <AppNavigation />
                   <main className="app-container">
                     <Routes>

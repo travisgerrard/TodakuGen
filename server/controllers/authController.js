@@ -80,7 +80,9 @@ const loginUser = async (req, res) => {
       token: generateToken(user.id),
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
-      preferences: user.preferences
+      preferences: user.preferences,
+      // Add a message about migration to inform users
+      message: "Database migration in progress. Some user data may be temporarily unavailable."
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -95,37 +97,25 @@ const loginUser = async (req, res) => {
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      include: [
-        { 
-          association: 'difficultWords',
-          through: { attributes: ['sleepUntil'] } 
-        },
-        { 
-          association: 'readStories',
-          through: { attributes: ['completedAt'] } 
-        },
-        { 
-          association: 'upvotedStories',
-          through: { attributes: [] }
-        }
-      ]
-    });
+    // During migration, try a simple query first without associations
+    // This is more likely to succeed during the transition period
+    const user = await User.findByPk(req.user.id);
 
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
 
+    // Return basic user info without trying to load associations that might not exist yet
     res.json({
       id: user.id,
       username: user.username,
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
       preferences: user.preferences,
-      difficultWords: user.difficultWords,
-      readStories: user.readStories,
-      upvotedStories: user.upvotedStories,
+      difficultWords: [], // Empty arrays for now
+      readStories: [],
+      upvotedStories: [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt
     });

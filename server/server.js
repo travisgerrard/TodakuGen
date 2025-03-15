@@ -1,12 +1,11 @@
+// Load environment variables first
+require('dotenv').config();
+
 const express = require('express');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const { connectDB } = require('./config/db');
 const { initializeAssociations } = require('./models');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
-
-// Load environment variables
-dotenv.config();
 
 // Initialize Express
 const app = express();

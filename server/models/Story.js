@@ -56,28 +56,20 @@ const setupAssociations = (models) => {
   // Story belongs to a User
   Story.belongsTo(User, {
     foreignKey: 'userId',
-    as: 'user'
+    as: 'author'
   });
 
   // Story vocabulary relationship
   Story.belongsToMany(Vocabulary, {
-    through: 'StoryVocabulary',
+    through: models.StoryVocabulary,
     foreignKey: 'storyId',
     otherKey: 'vocabularyId',
     as: 'vocabulary'
   });
 
-  // Define attributes for the StoryVocabulary join table
-  sequelize.define('StoryVocabulary', {
-    frequency: {
-      type: DataTypes.INTEGER,
-      defaultValue: 1
-    }
-  }, { timestamps: true });
-
   // Story grammar points relationship
   Story.belongsToMany(Grammar, {
-    through: 'StoryGrammar',
+    through: models.StoryGrammar,
     foreignKey: 'storyId',
     otherKey: 'grammarId',
     as: 'grammarPoints'
@@ -85,7 +77,7 @@ const setupAssociations = (models) => {
 
   // Users who upvoted this story
   Story.belongsToMany(User, {
-    through: 'UserUpvotedStories',
+    through: models.UserUpvotedStories,
     foreignKey: 'storyId',
     otherKey: 'userId',
     as: 'upvotedBy'
@@ -93,7 +85,7 @@ const setupAssociations = (models) => {
 
   // Users who read this story
   Story.belongsToMany(User, {
-    through: 'UserReadStories',
+    through: models.UserReadStories,
     foreignKey: 'storyId',
     otherKey: 'userId',
     as: 'readBy'

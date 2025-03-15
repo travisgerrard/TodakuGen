@@ -39,7 +39,7 @@ const setupAssociations = (models) => {
 
   // Grammar appears in many stories
   Grammar.belongsToMany(Story, {
-    through: 'StoryGrammar',
+    through: models.StoryGrammar,
     foreignKey: 'grammarId',
     otherKey: 'storyId',
     as: 'stories'

@@ -43,39 +43,23 @@ const setupAssociations = (models) => {
 
   // Define difficult words relationship
   User.belongsToMany(Vocabulary, {
-    through: 'UserDifficultWords',
+    through: models.UserDifficultWords,
     foreignKey: 'userId',
     otherKey: 'vocabularyId',
     as: 'difficultWords'
   });
 
-  // Define the attributes for the join table UserDifficultWords
-  sequelize.define('UserDifficultWords', {
-    sleepUntil: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW
-    }
-  }, { timestamps: true });
-
   // Define read stories relationship
   User.belongsToMany(Story, {
-    through: 'UserReadStories',
+    through: models.UserReadStories,
     foreignKey: 'userId',
     otherKey: 'storyId',
     as: 'readStories'
   });
 
-  // Define the attributes for the join table UserReadStories
-  sequelize.define('UserReadStories', {
-    completedAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW
-    }
-  }, { timestamps: true });
-
   // Define upvoted stories relationship
   User.belongsToMany(Story, {
-    through: 'UserUpvotedStories',
+    through: models.UserUpvotedStories,
     foreignKey: 'userId',
     otherKey: 'storyId',
     as: 'upvotedStories'

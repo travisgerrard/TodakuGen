@@ -45,7 +45,7 @@ const setupAssociations = (models) => {
 
   // Vocabulary appears in many stories
   Vocabulary.belongsToMany(Story, {
-    through: 'StoryVocabulary',
+    through: models.StoryVocabulary,
     foreignKey: 'vocabularyId',
     otherKey: 'storyId',
     as: 'stories'
@@ -53,7 +53,7 @@ const setupAssociations = (models) => {
 
   // Vocabulary marked as difficult by users
   Vocabulary.belongsToMany(User, {
-    through: 'UserDifficultWords',
+    through: models.UserDifficultWords,
     foreignKey: 'vocabularyId',
     otherKey: 'userId',
     as: 'markedDifficultBy'

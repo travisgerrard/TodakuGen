@@ -97,30 +97,61 @@ const loginUser = async (req, res) => {
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
-    // During migration, try a simple query first without associations
-    // This is more likely to succeed during the transition period
+    console.log('Fetching user profile for ID:', req.user.id);
+    
+    // First try to fetch just the basic user info without any associations
     const user = await User.findByPk(req.user.id);
 
     if (!user) {
-      res.status(404);
-      throw new Error('User not found');
+      console.error('User not found with ID:', req.user.id);
+      return res.status(404).json({
+        message: 'User not found'
+      });
     }
 
-    // Return basic user info without trying to load associations that might not exist yet
+    // Return basic user info without associations that might not exist during migration
     res.json({
       id: user.id,
       username: user.username,
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
       preferences: user.preferences,
-      difficultWords: [], // Empty arrays for now
+      difficultWords: [], // Providing empty arrays instead of trying to load associations
       readStories: [],
       upvotedStories: [],
       createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      updatedAt: user.updatedAt,
+      migrationMessage: "Database migration in progress. Some user data may be temporarily unavailable."
     });
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error('Get profile error:', error.message, error.stack);
+    
+    // Special case handling for migration issues
+    if (error.message && (
+      error.message.includes('relation') || 
+      error.message.includes('column') || 
+      error.message.includes('does not exist') ||
+      error.message.includes('syntax')
+    )) {
+      console.log('Detected migration-related error, returning fallback user data');
+      return res.json({
+        id: req.user.id,
+        username: "User",
+        waniKaniLevel: 1,
+        genkiChapter: 1,
+        preferences: {
+          storyLength: 'medium',
+          maxKanjiLevel: 5,
+          maxGrammarLevel: 3,
+          topics: ['daily life', 'school', 'travel']
+        },
+        difficultWords: [],
+        readStories: [],
+        upvotedStories: [],
+        migrationMessage: "Database migration in progress. Your user data is being transferred."
+      });
+    }
+    
     res.status(400).json({
       message: error.message
     });

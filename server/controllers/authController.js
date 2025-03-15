@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const { User, Story, Vocabulary, Grammar } = require('../models');
 
 // Generate JWT
 const generateToken = (id) => {
@@ -80,9 +80,7 @@ const loginUser = async (req, res) => {
       token: generateToken(user.id),
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
-      preferences: user.preferences,
-      // Add a message about migration to inform users
-      message: "Database migration in progress. Some user data may be temporarily unavailable."
+      preferences: user.preferences
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -93,68 +91,69 @@ const loginUser = async (req, res) => {
 };
 
 // @desc    Get user profile
-// @route   GET /api/auth/profile
+// @route   GET /api/auth/me
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
-    console.log('Fetching user profile for ID:', req.user.id);
-    
-    // First try to fetch just the basic user info without any associations
-    const user = await User.findByPk(req.user.id);
+    const userId = req.user.id;
+    console.log(`Fetching user profile for userId: ${userId}`);
+
+    const user = await User.findOne({
+      where: { id: userId },
+      include: [
+        {
+          model: Story,
+          as: 'stories',
+          required: false,
+        },
+        {
+          model: Story,
+          as: 'completedStories',
+          through: { attributes: ['completedAt'] },
+          required: false,
+        },
+        {
+          model: Story,
+          as: 'upvotedStories',
+          through: { attributes: [] },
+          required: false,
+        },
+        {
+          model: Vocabulary,
+          as: 'vocabulary',
+          required: false,
+        },
+        {
+          model: Grammar,
+          as: 'grammar',
+          required: false,
+        }
+      ]
+    });
 
     if (!user) {
-      console.error('User not found with ID:', req.user.id);
-      return res.status(404).json({
-        message: 'User not found'
-      });
+      console.error(`User not found: ${userId}`);
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    // Return basic user info without associations that might not exist during migration
+    console.log(`Successfully fetched user profile for ${userId}`);
+    
+    // Return the user profile
     res.json({
       id: user.id,
       username: user.username,
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
       preferences: user.preferences,
-      difficultWords: [], // Providing empty arrays instead of trying to load associations
-      readStories: [],
-      upvotedStories: [],
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      migrationMessage: "Database migration in progress. Some user data may be temporarily unavailable."
+      stories: user.stories || [],
+      completedStories: user.completedStories || [],
+      upvotedStories: user.upvotedStories || [],
+      vocabulary: user.vocabulary || [],
+      grammar: user.grammar || []
     });
   } catch (error) {
-    console.error('Get profile error:', error.message, error.stack);
-    
-    // Special case handling for migration issues
-    if (error.message && (
-      error.message.includes('relation') || 
-      error.message.includes('column') || 
-      error.message.includes('does not exist') ||
-      error.message.includes('syntax')
-    )) {
-      console.log('Detected migration-related error, returning fallback user data');
-      return res.json({
-        id: req.user.id,
-        username: "User",
-        waniKaniLevel: 1,
-        genkiChapter: 1,
-        preferences: {
-          storyLength: 'medium',
-          maxKanjiLevel: 5,
-          maxGrammarLevel: 3,
-          topics: ['daily life', 'school', 'travel']
-        },
-        difficultWords: [],
-        readStories: [],
-        upvotedStories: [],
-        migrationMessage: "Database migration in progress. Your user data is being transferred."
-      });
-    }
-    
-    res.status(400).json({
-      message: error.message
-    });
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ message: 'Failed to fetch user profile' });
   }
 };
 

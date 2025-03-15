@@ -1,63 +1,21 @@
 const { OpenAI } = require('openai');
-const { Story, User, Vocabulary, Grammar } = require('../models');
+const { 
+  Story, 
+  User, 
+  UserReadStories, 
+  UserUpvotedStories,
+  Vocabulary,
+  Grammar 
+} = require('../models');
 const { Op } = require('sequelize');
 const path = require('path');
 const fs = require('fs');
+const fallbackStories = require('../utils/fallbackStories');
 
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY 
 });
-
-// Fallback stories for when OpenAI API fails
-const fallbackStories = [
-  {
-    title: '公園で',
-    content: `私は今日公園に行きました。空は青くて、天気はとても良かったです。
-
-公園には多くの人がいました。子供たちは遊んでいて、大人たちは話をしていました。
-
-私はベンチに座って、本を読みました。時々、鳥の声を聞きました。
-
-二時間後、私は家に帰りました。今日は楽しかったです。`,
-    englishContent: `At the Park
-
-I went to the park today. The sky was blue, and the weather was very good.
-
-There were many people in the park. Children were playing, and adults were talking.
-
-I sat on a bench and read a book. Sometimes, I heard birds singing.
-
-Two hours later, I went home. Today was fun.`,
-    kanjiLevel: 2,
-    grammarLevel: 1,
-    length: 'short',
-    topic: 'daily life'
-  },
-  {
-    title: '新しい友達',
-    content: `山田さんは日本語の学生です。彼は大学で勉強しています。
-
-今日、山田さんは新しい友達に会いました。その友達の名前は田中さんです。田中さんもまた大学生です。
-
-二人は一緒にコーヒーを飲みました。彼らは学校と趣味について話しました。山田さんは音楽が好きで、田中さんは映画が好きです。
-
-今度の週末、彼らは映画館に行くつもりです。新しい友達ができて、山田さんはとても嬉しいです。`,
-    englishContent: `New Friend
-
-Yamada-san is a Japanese language student. He studies at university.
-
-Today, Yamada-san met a new friend. That friend's name is Tanaka-san. Tanaka-san is also a university student.
-
-They drank coffee together. They talked about school and hobbies. Yamada-san likes music, and Tanaka-san likes movies.
-
-Next weekend, they plan to go to the movie theater. Yamada-san is very happy to have made a new friend.`,
-    kanjiLevel: 3,
-    grammarLevel: 2,
-    length: 'medium',
-    topic: 'school'
-  }
-];
 
 // @desc    Generate a new story using ChatGPT
 // @route   GET /api/stories/generate
@@ -122,8 +80,8 @@ const generateStory = async (req, res) => {
         // Try to get a translation separately
         console.log("No [ENGLISH_TRANSLATION] marker found, requesting a separate translation");
         try {
-          const translationPrompt = `Please translate the following Japanese text to English:
-          
+          console.log('Generating English translation...');
+          const translationPrompt = `Please translate the following Japanese text to English. Maintain paragraph breaks and the original meaning:
 ${japaneseText}`;
           
           const translationResponse = await openai.chat.completions.create({
@@ -135,7 +93,7 @@ ${japaneseText}`;
           englishContent = translationResponse.choices[0].message.content.trim();
         } catch (translationError) {
           console.error('Error getting translation:', translationError);
-          englishContent = "Translation not available.";
+          englishContent = 'Translation not available. Please try again later.';
         }
       }
       
@@ -778,98 +736,83 @@ const getStoryReview = async (req, res) => {
   }
 };
 
-// @desc    Get all stories for the current user
-// @route   GET /api/stories/me
+// @desc    Get stories for a user
+// @route   GET /api/stories
 // @access  Private
 const getUserStories = async (req, res) => {
   try {
-    console.log(`Getting stories for user: ${req.user.id} (${req.user.username})`);
-    
-    // Find all stories created by this user
+    const userId = req.user.id;
+    console.log(`Fetching stories for user ${userId}`);
+
+    // Fetch stories created by the user
     const userCreatedStories = await Story.findAll({
-      where: { userId: req.user.id },
+      where: { userId },
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 'length', 'topic', 'createdAt', 'upvoteCount']
+      attributes: [
+        'id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 
+        'length', 'topic', 'createdAt', 'upvoteCount'
+      ]
     });
-      
-    console.log(`Found ${userCreatedStories.length} stories created by user: ${req.user.username}`);
     
-    // Find completed stories (stories that the user has read)
-    const completedStoriesData = await Story.findAll({
+    console.log(`Found ${userCreatedStories.length} stories created by user ${userId}`);
+
+    // Get completed stories
+    const userCompletedStories = await UserReadStories.findAll({
+      where: { userId },
       include: [{
-        model: User,
-        as: 'readBy',
-        where: { id: req.user.id },
-        attributes: [],
-        through: { attributes: ['completedAt'] }
-      }],
-      attributes: ['id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 'length', 'topic', 'createdAt', 'upvoteCount']
+        model: Story,
+        attributes: [
+          'id', 'title', 'content', 'kanjiLevel', 'grammarLevel', 
+          'length', 'topic', 'createdAt', 'upvoteCount', 'userId'
+        ]
+      }]
     });
-    
-    console.log(`Found ${completedStoriesData.length} completed stories for user: ${req.user.username}`);
-    
-    // Find upvoted stories
-    const upvotedStoryIds = await req.app.get('sequelize').model('UserUpvotedStories').findAll({
-      where: { userId: req.user.id },
+
+    // Get upvoted stories
+    const userUpvotedStories = await UserUpvotedStories.findAll({
+      where: { userId },
       attributes: ['storyId']
-    }).then(records => records.map(record => record.storyId));
-    
-    // Combine all stories, mark which ones are completed, and sort by date
-    // Create a map of story IDs to avoid duplicates
-    const storyMap = new Map();
-    
-    // Add user created stories to the map
-    userCreatedStories.forEach(story => {
-      const storyObj = story.toJSON();
-      storyMap.set(storyObj.id.toString(), {
-        ...storyObj,
-        completed: false,
-        isOwner: true, // Mark that user owns this story
-        storyId: storyObj.id,
-        isPublic: true, // All stories are public
-        hasUpvoted: upvotedStoryIds.includes(storyObj.id)
-      });
     });
     
-    // Add completed stories to the map
-    completedStoriesData.forEach(story => {
-      const storyObj = story.toJSON();
-      const storyId = storyObj.id.toString();
-      const completedAt = story.readBy[0]?.UserReadStories?.completedAt;
-      
-      if (storyMap.has(storyId)) {
-        // Update existing entry to mark as completed
-        const existingStory = storyMap.get(storyId);
-        storyMap.set(storyId, {
-          ...existingStory,
-          completed: true,
-          completedAt
-        });
-      } else {
-        // Add new entry
-        storyMap.set(storyId, {
-          ...storyObj,
-          isOwner: false,
-          storyId: storyObj.id,
-          completed: true,
-          completedAt,
-          hasUpvoted: upvotedStoryIds.includes(storyObj.id)
-        });
+    const upvotedStoryIds = userUpvotedStories.map(upvote => upvote.storyId);
+
+    // Combine user stories and completed stories
+    let allStories = [...userCreatedStories];
+    
+    // Add completed stories that aren't already in the list (user's own stories)
+    userCompletedStories.forEach(completion => {
+      if (completion.Story && !allStories.some(s => s.id === completion.Story.id)) {
+        const story = completion.Story;
+        // Convert to plain object for easier manipulation
+        const storyObj = story.get({ plain: true });
+        storyObj.completed = true;
+        storyObj.completedAt = completion.completedAt;
+        allStories.push(storyObj);
+      } else if (completion.Story) {
+        // Mark user's own story as completed
+        const existingStory = allStories.find(s => s.id === completion.Story.id);
+        if (existingStory) {
+          existingStory.completed = true;
+          existingStory.completedAt = completion.completedAt;
+        }
       }
     });
     
-    // Convert map to array for response
-    const allStories = Array.from(storyMap.values());
-    
-    console.log(`Returning ${allStories.length} total stories for user: ${req.user.username}`);
-    
+    // Mark stories owned by the user
+    allStories = allStories.map(story => {
+      const storyObj = story.get ? story.get({ plain: true }) : story;
+      return {
+        ...storyObj,
+        isOwner: storyObj.userId === userId,
+        upvoted: upvotedStoryIds.includes(storyObj.id)
+      };
+    });
+
+    console.log(`Returning ${allStories.length} total stories to user ${userId}`);
     res.json(allStories);
   } catch (error) {
     console.error('Error in getUserStories:', error);
-    res.status(500).json({
-      message: 'Failed to get user stories',
-      error: error.message
-    });
+    res.status(500).json({ message: 'Failed to fetch stories' });
   }
 };
 
@@ -903,39 +846,38 @@ const translateStory = async (req, res) => {
       });
     }
     
-    // Request a translation from OpenAI
-    console.log(`Generating English translation using OpenAI API`);
-    try {
-      const translationPrompt = `Translate the following Japanese text to natural English. Create a high-quality, accurate translation that captures the meaning while sounding natural in English:
-      
+    // If we don't have a cached translation, generate one
+    if (!story.englishContent) {
+      try {
+        const translationPrompt = `Please translate the following Japanese text to English. Maintain paragraph breaks and the original meaning:
 ${story.content}`;
-      
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: translationPrompt }],
-        max_tokens: 2000,
-        temperature: 0.3,
-      });
-      
-      const englishContent = response.choices[0].message.content.trim();
-      console.log(`Translation generated successfully (${englishContent.length} chars)`);
-      console.log(`First 100 chars: ${englishContent.substring(0, 100)}...`);
-      
-      // Save the translation to the story
-      await story.update({ englishContent });
-      console.log(`Translation saved to story in database`);
-      
-      return res.json({
-        success: true,
-        englishContent
-      });
-    } catch (translationError) {
-      console.error('Error generating translation:', translationError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to generate translation',
-        error: translationError.message
-      });
+        
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: translationPrompt }],
+          max_tokens: 1500,
+        });
+        
+        const englishContent = response.choices[0].message.content.trim();
+        console.log(`Translation generated successfully (${englishContent.length} chars)`);
+        console.log(`First 100 chars: ${englishContent.substring(0, 100)}...`);
+
+        // Save the translation to the story
+        await story.update({ englishContent });
+        console.log(`Translation saved to story in database`);
+        
+        return res.json({
+          success: true,
+          englishContent
+        });
+      } catch (translationError) {
+        console.error('Error generating translation:', translationError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to generate translation',
+          error: translationError.message
+        });
+      }
     }
   } catch (error) {
     console.error('Error in translateStory:', error);

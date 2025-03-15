@@ -95,8 +95,6 @@ function App() {
             <VocabProvider>
               <GrammarProvider>
                 <div className="app-wrapper">
-                  {/* Add the migration notice at the top */}
-                  <MigrationNotice />
                   <AppNavigation />
                   <main className="app-container">
                     <Routes>

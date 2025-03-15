@@ -1,14 +1,12 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const connectDB = require('./config/db');
+const { connectDB } = require('./config/db');
+const { initializeAssociations } = require('./models');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 // Load environment variables
 dotenv.config();
-
-// Connect to the database
-connectDB();
 
 // Initialize Express
 const app = express();
@@ -17,6 +15,12 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Add request logging
+app.use((req, res, next) => {
+  console.log(`[SERVER] ${req.method} ${req.url}`);
+  next();
+});
+
 // Add these test routes BEFORE your other route declarations
 app.get('/api/test', (req, res) => {
   res.json({ message: 'API test endpoint working' });
@@ -24,12 +28,6 @@ app.get('/api/test', (req, res) => {
 
 app.post('/api/auth/test', (req, res) => {
   res.json({ message: 'Auth test endpoint working', body: req.body });
-});
-
-// Add request logging
-app.use((req, res, next) => {
-  console.log(`[SERVER] ${req.method} ${req.url}`);
-  next();
 });
 
 // Routes
@@ -49,8 +47,24 @@ app.get('/', (req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-}); 
+// Connect to the database and start the server
+const startServer = async () => {
+  try {
+    // Connect to PostgreSQL database
+    await connectDB();
+    
+    // Initialize model associations
+    initializeAssociations();
+    
+    // Start the server
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error(`Failed to start server: ${error.message}`);
+    process.exit(1);
+  }
+};
+
+startServer(); 

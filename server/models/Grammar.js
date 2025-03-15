@@ -1,47 +1,49 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const GrammarSchema = new mongoose.Schema({
+const Grammar = sequelize.define('Grammar', {
   rule: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: true
+    }
   },
   genkiChapter: {
-    type: Number,
-    required: true
+    type: DataTypes.INTEGER,
+    allowNull: false
   },
   explanation: {
-    type: String,
-    required: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
-  examples: [
-    {
-      sentence: {
-        type: String,
-        required: true
-      },
-      translation: {
-        type: String,
-        required: true
-      }
-    }
-  ],
+  examples: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
   commonMistakes: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   similarPatterns: {
-    type: String,
-    default: ''
-  },
-  stories: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Story'
-    }
-  ]
+    type: DataTypes.TEXT,
+    defaultValue: ''
+  }
 }, {
   timestamps: true
 });
 
-module.exports = mongoose.model('Grammar', GrammarSchema); 
+// Setup model associations function (called after all models are defined)
+const setupAssociations = (models) => {
+  const { Story } = models;
+
+  // Grammar appears in many stories
+  Grammar.belongsToMany(Story, {
+    through: 'StoryGrammar',
+    foreignKey: 'grammarId',
+    otherKey: 'storyId',
+    as: 'stories'
+  });
+};
+
+module.exports = { Grammar, setupAssociations }; 

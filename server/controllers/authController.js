@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { User } = require('../models');
 
 // Generate JWT
 const generateToken = (id) => {
@@ -16,7 +16,9 @@ const registerUser = async (req, res) => {
     const { username } = req.body;
 
     // Check if user already exists
-    const userExists = await User.findOne({ username });
+    const userExists = await User.findOne({ 
+      where: { username }
+    });
 
     if (userExists) {
       res.status(400);
@@ -30,9 +32,9 @@ const registerUser = async (req, res) => {
 
     if (user) {
       res.status(201).json({
-        userId: user._id,
+        userId: user.id,
         username: user.username,
-        token: generateToken(user._id),
+        token: generateToken(user.id),
         waniKaniLevel: user.waniKaniLevel,
         genkiChapter: user.genkiChapter,
         preferences: user.preferences,
@@ -48,34 +50,37 @@ const registerUser = async (req, res) => {
   }
 };
 
-// @desc    Login user (simplified, username only)
+// @desc    Authenticate a user
 // @route   POST /api/auth/login
 // @access  Public
 const loginUser = async (req, res) => {
   try {
     const { username } = req.body;
 
-    // Check if user exists, create if not (simplified auth)
-    let user = await User.findOne({ username });
-
-    if (!user) {
-      // Create new user if username doesn't exist
-      console.log(`User '${username}' not found, creating new account`);
-      user = await User.create({
-        username
-      });
-    } else {
-      console.log(`User '${username}' found, logging in existing account (ID: ${user._id})`);
+    // Validate input
+    if (!username) {
+      res.status(400);
+      throw new Error('Please provide a username');
     }
 
-    // Return comprehensive user data
+    // Find the user
+    const user = await User.findOne({
+      where: { username }
+    });
+
+    if (!user) {
+      // If user doesn't exist, create a new account
+      return registerUser(req, res);
+    }
+
+    // User exists, generate token and return user data
     res.json({
-      userId: user._id,
+      userId: user.id,
       username: user.username,
-      token: generateToken(user._id),
+      token: generateToken(user.id),
       waniKaniLevel: user.waniKaniLevel,
       genkiChapter: user.genkiChapter,
-      preferences: user.preferences,
+      preferences: user.preferences
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -86,37 +91,46 @@ const loginUser = async (req, res) => {
 };
 
 // @desc    Get user profile
-// @route   GET /api/users/me
+// @route   GET /api/auth/profile
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
-    if (!req.user || !req.user._id) {
-      console.error('getUserProfile called without valid user ID');
-      return res.status(401).json({
-        message: 'Authentication required',
-      });
-    }
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        { 
+          association: 'difficultWords',
+          through: { attributes: ['sleepUntil'] } 
+        },
+        { 
+          association: 'readStories',
+          through: { attributes: ['completedAt'] } 
+        },
+        { 
+          association: 'upvotedStories',
+          through: { attributes: [] }
+        }
+      ]
+    });
 
-    console.log(`Fetching profile for user: ${req.user._id}`);
-    const user = await User.findById(req.user._id);
-
-    if (user) {
-      // Return comprehensive user data
-      res.json({
-        _id: user._id,
-        username: user.username,
-        waniKaniLevel: user.waniKaniLevel,
-        genkiChapter: user.genkiChapter,
-        preferences: user.preferences,
-        storyCount: user.readStories?.length || 0,
-      });
-    } else {
-      console.error(`User not found with ID: ${req.user._id}`);
+    if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
+
+    res.json({
+      id: user.id,
+      username: user.username,
+      waniKaniLevel: user.waniKaniLevel,
+      genkiChapter: user.genkiChapter,
+      preferences: user.preferences,
+      difficultWords: user.difficultWords,
+      readStories: user.readStories,
+      upvotedStories: user.upvotedStories,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    });
   } catch (error) {
-    console.error('getUserProfile error:', error);
+    console.error('Get profile error:', error);
     res.status(400).json({
       message: error.message
     });
@@ -124,38 +138,42 @@ const getUserProfile = async (req, res) => {
 };
 
 // @desc    Update user profile
-// @route   PUT /api/users/me
+// @route   PUT /api/auth/profile
 // @access  Private
 const updateUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user.id);
 
-    if (user) {
-      user.waniKaniLevel = req.body.waniKaniLevel || user.waniKaniLevel;
-      user.genkiChapter = req.body.genkiChapter || user.genkiChapter;
-      
-      if (req.body.preferences) {
-        user.preferences = {
-          ...user.preferences,
-          ...req.body.preferences,
-        };
-      }
-
-      const updatedUser = await user.save();
-
-      res.json({
-        _id: updatedUser._id,
-        username: updatedUser.username,
-        waniKaniLevel: updatedUser.waniKaniLevel,
-        genkiChapter: updatedUser.genkiChapter,
-        preferences: updatedUser.preferences,
-        token: generateToken(updatedUser._id),
-      });
-    } else {
+    if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
+
+    // Update fields if provided in the request
+    if (req.body.username) user.username = req.body.username;
+    if (req.body.waniKaniLevel) user.waniKaniLevel = req.body.waniKaniLevel;
+    if (req.body.genkiChapter) user.genkiChapter = req.body.genkiChapter;
+
+    // Handle preferences updates
+    if (req.body.preferences) {
+      // Merge with existing preferences
+      user.preferences = {
+        ...user.preferences,
+        ...req.body.preferences
+      };
+    }
+
+    await user.save();
+
+    res.json({
+      id: user.id,
+      username: user.username,
+      waniKaniLevel: user.waniKaniLevel,
+      genkiChapter: user.genkiChapter,
+      preferences: user.preferences
+    });
   } catch (error) {
+    console.error('Update profile error:', error);
     res.status(400).json({
       message: error.message
     });
@@ -166,5 +184,5 @@ module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
-  updateUserProfile,
+  updateUserProfile
 }; 

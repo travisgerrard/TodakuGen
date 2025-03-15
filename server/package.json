@@ -11,7 +11,9 @@
     "data:import": "node seeder.js",
     "data:destroy": "node seeder.js -d",
     "update:models": "node updateModels.js",
-    "clear:db": "node clearDatabase.js"
+    "clear:db": "node clearDatabase.js",
+    "db:migrate": "node scripts/migrateToPostgres.js",
+    "db:seed": "node scripts/seedPostgres.js"
   },
   "keywords": [
     "japanese",
@@ -27,8 +29,10 @@
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
-    "mongoose": "^7.0.1",
-    "openai": "^4.0.0"
+    "openai": "^4.0.0",
+    "pg": "^8.14.0",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.6"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

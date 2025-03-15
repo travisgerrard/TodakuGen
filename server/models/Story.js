@@ -1,79 +1,103 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const StorySchema = new mongoose.Schema({
+const Story = sequelize.define('Story', {
   title: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: true
+    }
   },
   content: {
-    type: String,
-    required: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
   englishContent: {
-    type: String,
-    default: ''
-  },
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   kanjiLevel: {
-    type: Number,
-    required: true
+    type: DataTypes.INTEGER,
+    allowNull: false
   },
   grammarLevel: {
-    type: Number,
-    required: true
+    type: DataTypes.INTEGER,
+    allowNull: false
   },
   length: {
-    type: String,
-    enum: ['short', 'medium', 'long'],
-    required: true
+    type: DataTypes.ENUM('short', 'medium', 'long'),
+    allowNull: false
   },
   topic: {
-    type: String,
-    required: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
-  vocabulary: [
-    {
-      wordId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Vocabulary'
-      },
-      frequency: {
-        type: Number,
-        default: 1
-      }
-    }
-  ],
-  grammarPoints: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Grammar'
-    }
-  ],
   audioUrl: {
-    type: String,
-    default: null
+    type: DataTypes.STRING,
+    defaultValue: null
   },
-  upvotes: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  ],
   upvoteCount: {
-    type: Number,
-    default: 0
+    type: DataTypes.INTEGER,
+    defaultValue: 0
   },
   isPublic: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
 }, {
   timestamps: true
 });
 
-module.exports = mongoose.model('Story', StorySchema); 
+// Setup model associations function (called after all models are defined)
+const setupAssociations = (models) => {
+  const { User, Vocabulary, Grammar } = models;
+
+  // Story belongs to a User
+  Story.belongsTo(User, {
+    foreignKey: 'userId',
+    as: 'user'
+  });
+
+  // Story vocabulary relationship
+  Story.belongsToMany(Vocabulary, {
+    through: 'StoryVocabulary',
+    foreignKey: 'storyId',
+    otherKey: 'vocabularyId',
+    as: 'vocabulary'
+  });
+
+  // Define attributes for the StoryVocabulary join table
+  sequelize.define('StoryVocabulary', {
+    frequency: {
+      type: DataTypes.INTEGER,
+      defaultValue: 1
+    }
+  }, { timestamps: true });
+
+  // Story grammar points relationship
+  Story.belongsToMany(Grammar, {
+    through: 'StoryGrammar',
+    foreignKey: 'storyId',
+    otherKey: 'grammarId',
+    as: 'grammarPoints'
+  });
+
+  // Users who upvoted this story
+  Story.belongsToMany(User, {
+    through: 'UserUpvotedStories',
+    foreignKey: 'storyId',
+    otherKey: 'userId',
+    as: 'upvotedBy'
+  });
+
+  // Users who read this story
+  Story.belongsToMany(User, {
+    through: 'UserReadStories',
+    foreignKey: 'storyId',
+    otherKey: 'userId',
+    as: 'readBy'
+  });
+};
+
+module.exports = { Story, setupAssociations }; 

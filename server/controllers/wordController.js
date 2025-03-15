@@ -1,5 +1,5 @@
-const User = require('../models/User');
-const Vocabulary = require('../models/Vocabulary');
+const { User, Vocabulary } = require('../models');
+const { Op } = require('sequelize');
 
 // @desc    Mark a word as "too hard" (add to difficultWords)
 // @route   POST /api/words/mark
@@ -13,7 +13,7 @@ const markWordAsDifficult = async (req, res) => {
       throw new Error('Word ID is required');
     }
     
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user.id);
     
     if (!user) {
       res.status(404);
@@ -21,28 +21,33 @@ const markWordAsDifficult = async (req, res) => {
     }
     
     // Check if word exists
-    const word = await Vocabulary.findById(wordId);
+    const word = await Vocabulary.findByPk(wordId);
     if (!word) {
       res.status(404);
       throw new Error('Word not found');
     }
     
-    // Remove if already in difficultWords (to avoid duplicates)
-    user.difficultWords = user.difficultWords.filter(
-      (w) => w.wordId.toString() !== wordId
-    );
-    
     // Calculate the date when this word should be shown again
     const sleepUntil = new Date();
     sleepUntil.setDate(sleepUntil.getDate() + sleepDays);
     
-    // Add to difficultWords
-    user.difficultWords.push({
-      wordId,
-      sleepUntil,
+    // Get the join table model
+    const UserDifficultWords = req.app.get('sequelize').model('UserDifficultWords');
+    
+    // Remove if already exists (to update with new sleep date)
+    await UserDifficultWords.destroy({ 
+      where: { 
+        userId: user.id,
+        vocabularyId: wordId
+      }
     });
     
-    await user.save();
+    // Add to difficultWords
+    await UserDifficultWords.create({
+      userId: user.id,
+      vocabularyId: wordId,
+      sleepUntil
+    });
     
     res.json({ success: true, message: 'Word marked as difficult' });
   } catch (error) {
@@ -58,34 +63,43 @@ const markWordAsDifficult = async (req, res) => {
 // @access  Private
 const getDifficultWords = async (req, res) => {
   try {
-    if (!req.user || !req.user._id) {
+    if (!req.user || !req.user.id) {
       return res.status(401).json({
         message: 'Authentication required',
       });
     }
 
-    console.log(`Fetching difficult words for user: ${req.user._id}`);
-    const user = await User.findById(req.user._id)
-      .populate('difficultWords.wordId');
+    console.log(`Fetching difficult words for user: ${req.user.id}`);
+    
+    // Find user with difficult words
+    const user = await User.findByPk(req.user.id, {
+      include: [{
+        model: Vocabulary,
+        as: 'difficultWords',
+        through: { attributes: ['sleepUntil'] }
+      }]
+    });
     
     if (!user) {
-      console.log(`User not found: ${req.user._id}`);
+      console.log(`User not found: ${req.user.id}`);
       return res.status(404).json({
         message: 'User not found',
       });
     }
     
-    // Filter out entries without a valid wordId
-    const allDifficultWords = user.difficultWords.filter(w => w.wordId);
-    
-    // Mark words as active or sleeping
+    // Process difficult words to add active/sleeping status
     const now = new Date();
-    const processedWords = allDifficultWords.map(word => {
-      const isActive = word.sleepUntil <= now;
+    const processedWords = user.difficultWords.map(word => {
+      const sleepUntil = word.UserDifficultWords.sleepUntil;
+      const isActive = sleepUntil <= now;
+      
+      const wordObj = word.toJSON();
+      
       return {
-        ...word.toObject(),
+        ...wordObj,
+        sleepUntil,
         active: isActive,
-        sleepRemaining: isActive ? 0 : Math.ceil((word.sleepUntil - now) / (1000 * 60 * 60 * 24)) // days remaining
+        sleepRemaining: isActive ? 0 : Math.ceil((sleepUntil - now) / (1000 * 60 * 60 * 24)) // days remaining
       };
     });
     
@@ -105,17 +119,17 @@ const getDifficultWords = async (req, res) => {
 // @access  Private
 const getWordsForReview = async (req, res) => {
   try {
-    if (!req.user || !req.user._id) {
+    if (!req.user || !req.user.id) {
       return res.status(401).json({
         message: 'Authentication required',
       });
     }
 
-    console.log(`Fetching review words for user: ${req.user._id}`);
-    const user = await User.findById(req.user._id);
+    console.log(`Fetching review words for user: ${req.user.id}`);
+    const user = await User.findByPk(req.user.id);
     
     if (!user) {
-      console.log(`User not found: ${req.user._id}`);
+      console.log(`User not found: ${req.user.id}`);
       return res.status(404).json({
         message: 'User not found',
       });
@@ -128,9 +142,14 @@ const getWordsForReview = async (req, res) => {
     const kanjiLevel = user.waniKaniLevel || 1;
     console.log(`Fetching words for WaniKani level: ${kanjiLevel}`);
     
-    const wordsForReview = await Vocabulary.find({
-      kanjiLevel: { $lte: kanjiLevel }
-    }).limit(10);
+    const wordsForReview = await Vocabulary.findAll({
+      where: {
+        kanjiLevel: {
+          [Op.lte]: kanjiLevel
+        }
+      },
+      limit: 10
+    });
     
     console.log(`Returning ${wordsForReview.length} words for review`);
     return res.json(wordsForReview || []);
@@ -153,27 +172,35 @@ const searchVocabulary = async (req, res) => {
     console.log(`Searching vocabulary: query="${query || ''}", kanjiLevel=${kanjiLevel || 'none'}`);
     
     // Build search filter
-    const filter = {};
+    const where = {};
     
     if (query) {
-      filter.$or = [
-        { word: { $regex: query, $options: 'i' } },
-        { reading: { $regex: query, $options: 'i' } },
-        { meaning: { $regex: query, $options: 'i' } },
+      where[Op.or] = [
+        { word: { [Op.iLike]: `%${query}%` } },
+        { reading: { [Op.iLike]: `%${query}%` } },
+        { meaning: { [Op.iLike]: `%${query}%` } }
       ];
     }
     
+    let level = null;
     if (kanjiLevel) {
-      filter.kanjiLevel = { $lte: parseInt(kanjiLevel) };
+      level = parseInt(kanjiLevel);
     } else if (req.user) {
       // Default to user's level if not specified
-      const user = await User.findById(req.user._id);
-      if (user && user.kanjiLevel) {
-        filter.kanjiLevel = { $lte: user.kanjiLevel };
+      const user = await User.findByPk(req.user.id);
+      if (user && user.waniKaniLevel) {
+        level = user.waniKaniLevel;
       }
     }
     
-    const words = await Vocabulary.find(filter).limit(10);
+    if (level) {
+      where.kanjiLevel = { [Op.lte]: level };
+    }
+    
+    const words = await Vocabulary.findAll({
+      where,
+      limit: 10
+    });
     
     console.log(`Search returned ${words.length} results`);
     
@@ -213,14 +240,12 @@ const addWordToVocabulary = async (word, user) => {
       word: word,
       reading: word, // Default to same as word for now
       meaning: 'Custom word', // Default meaning
-      kanjiLevel: user && user.kanjiLevel ? user.kanjiLevel : 5, // Default to user's level or N5
-      frequency: 0,
+      kanjiLevel: user && user.waniKaniLevel ? user.waniKaniLevel : 5, // Default to user's level or N5
       exampleSentences: []
     };
 
     // Create and save the new word
-    const newWord = new Vocabulary(newWordData);
-    await newWord.save();
+    const newWord = await Vocabulary.create(newWordData);
     
     console.log(`New word added to vocabulary: ${word}`);
     return newWord;
@@ -236,7 +261,9 @@ const addWordToVocabulary = async (word, user) => {
 const getAllVocabulary = async (req, res) => {
   try {
     // Limit to 100 results to avoid performance issues
-    const words = await Vocabulary.find().limit(100);
+    const words = await Vocabulary.findAll({
+      limit: 100
+    });
     
     res.json(words);
   } catch (error) {
@@ -260,26 +287,28 @@ const removeFromDifficult = async (req, res) => {
       throw new Error('Word ID is required');
     }
     
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user.id);
     
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
     
-    // Find the index of the word in the difficultWords array
-    const wordIndex = user.difficultWords.findIndex(
-      item => item.wordId.toString() === wordId
-    );
+    // Get the join table model
+    const UserDifficultWords = req.app.get('sequelize').model('UserDifficultWords');
     
-    if (wordIndex === -1) {
+    // Delete the relationship
+    const deleted = await UserDifficultWords.destroy({
+      where: {
+        userId: user.id,
+        vocabularyId: wordId
+      }
+    });
+    
+    if (deleted === 0) {
       res.status(404);
       throw new Error('Word not found in difficult list');
     }
-    
-    // Remove the word from the difficultWords array
-    user.difficultWords.splice(wordIndex, 1);
-    await user.save();
     
     res.status(200).json({
       success: true,

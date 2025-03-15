@@ -1,5 +1,5 @@
-const Grammar = require('../models/Grammar');
-const User = require('../models/User');
+const { Grammar, User } = require('../models');
+const { Op } = require('sequelize');
 
 // @desc    Search grammar database
 // @route   GET /api/grammar/search
@@ -9,27 +9,34 @@ const searchGrammar = async (req, res) => {
     const { query, genkiChapter } = req.query;
     
     // Build search filter
-    const filter = {};
+    const where = {};
     
     if (query) {
-      filter.$or = [
-        { rule: { $regex: query, $options: 'i' } },
-        { pattern: { $regex: query, $options: 'i' } },
-        { explanation: { $regex: query, $options: 'i' } },
+      where[Op.or] = [
+        { rule: { [Op.iLike]: `%${query}%` } },
+        { explanation: { [Op.iLike]: `%${query}%` } }
       ];
     }
     
+    let level = null;
     if (genkiChapter) {
-      filter.genkiChapter = { $lte: parseInt(genkiChapter) };
+      level = parseInt(genkiChapter);
     } else if (req.user) {
       // Default to user's level if not specified
-      const user = await User.findById(req.user._id);
+      const user = await User.findByPk(req.user.id);
       if (user && user.genkiChapter) {
-        filter.genkiChapter = { $lte: user.genkiChapter };
+        level = user.genkiChapter;
       }
     }
     
-    const grammar = await Grammar.find(filter).limit(20);
+    if (level) {
+      where.genkiChapter = { [Op.lte]: level };
+    }
+    
+    const grammar = await Grammar.findAll({
+      where,
+      limit: 20
+    });
     
     res.json(grammar);
   } catch (error) {
@@ -46,7 +53,9 @@ const searchGrammar = async (req, res) => {
 const getAllGrammar = async (req, res) => {
   try {
     // Limit to 100 results to avoid performance issues
-    const grammarPoints = await Grammar.find().limit(100);
+    const grammarPoints = await Grammar.findAll({
+      limit: 100
+    });
     
     res.json(grammarPoints);
   } catch (error) {
